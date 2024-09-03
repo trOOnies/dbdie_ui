@@ -1,2 +1,2 @@
-# dbdie_ui
-DBDIE UI in Gradio
+# DBDIE UI
+Dead By Daylight's Information Extraction (DBDIE) UI in Gradio.
