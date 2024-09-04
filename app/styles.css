@@ -1,0 +1,40 @@
+.first-row {
+    background-color: rgb(184, 99, 99);
+    padding: 0px !important;
+    margin: 0px !important;
+    align-items: center !important;
+}
+.second-row {
+    background-color: rgb(241, 240, 173);
+    padding: 0px !important;
+    margin: 0px !important;
+    align-items: center !important;
+}
+.third-row {
+    background-color: rgb(179, 228, 104);
+    padding: 0px !important;
+    margin: 0px !important;
+    align-items: center !important;
+}
+.fourth-row {
+    background-color: rgb(135, 199, 220);
+    padding: 0px !important;
+    margin: 0px !important;
+    align-items: center !important;
+}
+.label-row {
+    height: 18vh !important;
+}
+.option-col {
+    gap: 0px !important;
+}
+.vertical-text {
+    width: 10em !important;
+    padding: 0px !important;
+    margin: 0px !important;
+}
+.prose.vertical-text {
+    text-align: center !important;
+    transform: rotate(-90deg) !important;
+    background-color: black !important;
+}
