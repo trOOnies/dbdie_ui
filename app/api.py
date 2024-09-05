@@ -33,3 +33,26 @@ def cache_perks(local_fallback: bool) -> None:
 
     perks = pd.DataFrame(perks)
     perks.to_csv(path, index=False)
+
+
+def upload_labels(labels) -> None:
+    """Upload labels set by the user."""
+    # TODO: Upload labels working code
+    for player_id in range(4):
+        min_id = 4 * player_id
+        max_id = 4 * (player_id + 1)
+        print(labels[min_id:max_id], end="\t")
+    print()
+
+    # for player_id in range(4):
+    #     resp = requests.post(
+    #         endp(f"/perks/{id}"),
+    #         json={
+    #             "fmts": ["perks__killer"],
+    #             "filename": "FILENAME",  # TODO
+    #         },
+    #     )
+    #     if resp.status_code != 201:
+    #         raise Exception(resp.reason)
+
+    print(20 * "-")

@@ -1,15 +1,15 @@
 """Main script for DBDIE UI"""
 
+from api import cache_perks
 from data import load_perks
 from dotenv import load_dotenv
 from ui import create_ui
-from api import cache_perks
 
 with open("app/styles.css") as f:
     CSS = f.read()
 
 
-def main():
+def main() -> None:
     load_dotenv(".env")
     cache_perks(local_fallback=False)
     perks = load_perks()
