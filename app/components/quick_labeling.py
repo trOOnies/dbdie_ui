@@ -1,5 +1,6 @@
 """Functions for quick_labeling component"""
 
+import os
 from typing import TYPE_CHECKING, Callable
 
 import gradio as gr
@@ -7,7 +8,7 @@ from api import upload_labels
 from img import rescale_img
 
 if TYPE_CHECKING:
-    from data import SurvLabeler
+    from classes.surv_labeler import SurvLabeler
 
 Options = list[tuple[str, int]]
 LabeledImages = list[tuple[str, int]]
@@ -34,6 +35,7 @@ def images_box(options: Options, w: int) -> ImageBox:
                     imgs = {
                         i: gr.Image(
                             rescale_img(vs[0], w),
+                            interactive=False,
                             height="11em",
                             container=False,
                         )
@@ -55,60 +57,89 @@ def images_box(options: Options, w: int) -> ImageBox:
     return form_images
 
 
-def extract_values(perks_objs) -> list:
-    return [o for row in perks_objs.values() for o in row["dropdowns"].values()]
+def flatten_objs(objs: dict[int, dict], kind: str) -> list:
+    return [o for row in objs.values() for o in row[kind].values()]
+
+
+def empty_fn(*input_data):
+    """Empty labels function."""
+    updated_data = [0 for _ in range(len(input_data))]
+    return [gr.update(value=label) for label in updated_data]
+
+
+def make_label_fn(surv_lbl: "SurvLabeler", upload: bool):
+    """Make the main label (button) function.
+
+    upload: Toggles the upload and the changing of the labels for the following ones.
+        If false, it's useful for synching when refreshing.
+    """
+
+    def label_fn(*input_data):
+        """Main label function. Also used for synching objects when refreshing."""
+        assert len(input_data) == 32
+
+        if upload:
+            upload_labels(input_data[16:])
+            updated_data = surv_lbl.next()
+        else:
+            updated_data = surv_lbl.current["labels_flat"]
+
+        if not surv_lbl.done:
+            crops = surv_lbl.get_crops("png")
+            match_img_path = os.path.join(
+                os.environ["DBDIE_MAIN_FD"],
+                f"data/img/cropped/{surv_lbl.current['match']['filename']}",  # TODO: Try out
+            )
+        else:
+            print("LABELING DONE")
+            crops = [None for _ in range(16)]
+            updated_data = [0 for _ in range(16)]
+            match_img_path = None
+
+        print(match_img_path)
+
+        return (
+            [
+                gr.update(
+                    value=rescale_img(img, 120) if isinstance(img, str) else None,
+                    interactive=False,
+                    height="11em",
+                    container=False,
+                )
+                for img in crops
+            ]  # images
+            + [gr.update(value=label) for label in updated_data]  # dropdowns
+            + [gr.update(value=match_img_path)]  # match image
+            + [
+                gr.update(
+                    value=f"Match: {surv_lbl.current['match']['filename']}"
+                    if not surv_lbl.done
+                    else ""
+                )
+            ]  # match markdown
+            + [
+                gr.update(visible=surv_lbl.done),  # note row
+                gr.update(visible=not surv_lbl.done),  # labeling row
+                gr.update(visible=surv_lbl.done),  # current match note row
+                gr.update(visible=not surv_lbl.done),  # current match row
+            ]
+        )
+
+    return label_fn
 
 
 def ql_buttons(
     surv_labeler: "SurvLabeler",
-    perks_objs: dict[int, dict],
-    note_row_visible: gr.State,
-    labeling_row_visible: gr.State,
-) -> tuple[gr.Button, gr.Button]:
+) -> tuple[gr.Button, gr.Button, gr.Markdown]:
     """Create quick_labeling buttons"""
     with gr.Row():
         with gr.Column(scale=1, min_width=100):
-            gr.Markdown(f"Match: {surv_labeler.current['match']['filename']}")
+            ql_match_md = gr.Markdown(
+                f"Match: {surv_labeler.current['match']['filename']}"
+            )
         with gr.Column(scale=17):
             with gr.Row():
                 ql_all_empty_btt = gr.Button("All Empty", variant="stop")
                 ql_label_btt = gr.Button("Label", variant="primary")
 
-        def label_fn(*input_data):
-            note_vis = False
-            labeling_vis = True
-
-            upload_labels(input_data[:16])
-            updated_data = surv_labeler.next()
-
-            if not updated_data:
-                print("CHANGING")
-                note_vis = True
-                labeling_vis = False
-                updated_data = [0 for _ in range(16)]
-
-            print("note_vis:", note_vis)
-            print("labeling_vis:", labeling_vis)
-
-            return [gr.update(value=label) for label in updated_data] + [
-                gr.update(visible=note_vis),
-                gr.update(visible=labeling_vis),
-            ]
-
-        def empty_fn(*input_data):
-            updated_data = [0 for _ in range(len(input_data))]
-            return [gr.update(value=label) for label in updated_data]
-
-        ql_all_empty_btt.click(
-            empty_fn,
-            inputs=extract_values(perks_objs),
-            outputs=extract_values(perks_objs),
-        )
-        ql_label_btt.click(
-            label_fn,
-            inputs=extract_values(perks_objs)
-            + [note_row_visible, labeling_row_visible],
-            outputs=extract_values(perks_objs)
-            + [note_row_visible, labeling_row_visible],
-        )
-    return ql_all_empty_btt, ql_label_btt
+    return ql_all_empty_btt, ql_label_btt, ql_match_md

@@ -1,0 +1,47 @@
+0) {pl0_character}
+Perks
+- {pl0_perk_0}
+- {pl0_perk_1}
+- {pl0_perk_2}
+- {pl0_perk_3}
+Item: {pl0_item}
+Addons:
+- {pl0_addon_0}
+- {pl0_addon_1}
+Offering: {pl0_offering}
+
+1) {pl1_character}
+Perks
+- {pl1_perk_0}
+- {pl1_perk_1}
+- {pl1_perk_2}
+- {pl1_perk_3}
+Item: {pl1_item}
+Addons:
+- {pl1_addon_0}
+- {pl1_addon_1}
+Offering: {pl1_offering}
+
+2) {pl2_character}
+Perks
+- {pl2_perk_0}
+- {pl2_perk_1}
+- {pl2_perk_2}
+- {pl2_perk_3}
+Item: {pl2_item}
+Addons:
+- {pl2_addon_0}
+- {pl2_addon_1}
+Offering: {pl2_offering}
+
+3) {pl3_character}
+Perks
+- {pl3_perk_0}
+- {pl3_perk_1}
+- {pl3_perk_2}
+- {pl3_perk_3}
+Item: {pl3_item}
+Addons:
+- {pl3_addon_0}
+- {pl3_addon_1}
+Offering: {pl3_offering}

@@ -1,0 +1,11 @@
+{i}) {character}
+Perks
+- {perk_0}
+- {perk_1}
+- {perk_2}
+- {perk_3}
+Item: {item}
+Addons:
+- {addon_0}
+- {addon_1}
+Offering: {offering}
