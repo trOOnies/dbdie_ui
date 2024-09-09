@@ -67,13 +67,13 @@ class SurvLabeler:
         return surv_labeler
 
     def get_limgs(self, img_ext: str) -> dict[int, list[tuple[str, int]]]:
-        """Get labeled images of current selection."""
+        """Get labeled images of current selection as a dict."""
         main_img = self.current["match"]["filename"][:-4]
         labels = self.current["labels"]
         return {
             i: [
                 (
-                    os.path.join(SURV_PERKS_FD, f"{main_img}{i}{j}.{img_ext}"),
+                    os.path.join(SURV_PERKS_FD, f"{main_img}_{i}_{j}.{img_ext}"),
                     labels[i][j],
                 )
                 for j in range(4)
@@ -82,10 +82,10 @@ class SurvLabeler:
         }
 
     def get_crops(self, img_ext: str) -> list[str]:
-        """Get labeled images of current selection."""
+        """Get labeled images of current selection as a flattened list."""
         main_img = self.current["match"]["filename"][:-4]
         return [
-            os.path.join(SURV_PERKS_FD, f"{main_img}{i}{j}.{img_ext}")
+            os.path.join(SURV_PERKS_FD, f"{main_img}_{i}_{j}.{img_ext}")
             for i in range(4)
             for j in range(4)
         ]

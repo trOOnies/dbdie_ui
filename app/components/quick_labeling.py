@@ -75,20 +75,23 @@ def make_label_fn(surv_lbl: "SurvLabeler", upload: bool):
     """
 
     def label_fn(*input_data):
-        """Main label function. Also used for synching objects when refreshing."""
+        """Main label function. Also used for synching objects when refreshing.
+        
+        Flattened input: First 16 images, and then 16 dropdowns.
+        """
         assert len(input_data) == 32
 
         if upload:
-            upload_labels(input_data[16:])
+            upload_labels(surv_lbl.current["match"]["id"], input_data[16:])
             updated_data = surv_lbl.next()
         else:
             updated_data = surv_lbl.current["labels_flat"]
 
         if not surv_lbl.done:
-            crops = surv_lbl.get_crops("png")
+            crops = surv_lbl.get_crops("jpg")
             match_img_path = os.path.join(
                 os.environ["DBDIE_MAIN_FD"],
-                f"data/img/cropped/{surv_lbl.current['match']['filename']}",  # TODO: Try out
+                f"data/img/cropped/{surv_lbl.current['match']['filename']}",
             )
         else:
             print("LABELING DONE")
@@ -102,6 +105,7 @@ def make_label_fn(surv_lbl: "SurvLabeler", upload: bool):
             [
                 gr.update(
                     value=rescale_img(img, 120) if isinstance(img, str) else None,
+                    label=match_img_path,
                     interactive=False,
                     height="11em",
                     container=False,

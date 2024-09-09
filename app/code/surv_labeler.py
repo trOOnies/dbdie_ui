@@ -24,6 +24,7 @@ def process_matches(matches_json: list[dict]) -> pd.DataFrame:
     matches = pd.DataFrame(
         [{k: v for k, v in m.items() if k in ["id", "filename"]} for m in matches_json]
     )
+    matches = matches.sort_values("id")
     matches = matches.set_index("id", drop=True)
     return matches
 
@@ -32,10 +33,13 @@ def process_labels(labels_json: list[dict]) -> pd.DataFrame:
     """Process labels' JSON and convert to DataFrame."""
     labels = pd.DataFrame(
         [
-            {k: v for k, v in lbl.items() if k in ["match_id", "player"]}
+            {k: v for k, v in lbl.items() if k in ["match_id", "player", "manually_checked"]}
             for lbl in labels_json
         ]
     )
+
+    labels["manually_checked"] = labels["manually_checked"].fillna(False)
+    labels = labels[~labels["manually_checked"]]
 
     labels["player_id"] = labels["player"].map(lambda pl: pl["id"])
     labels["perks"] = labels["player"].map(lambda pl: pl["perk_ids"])
@@ -45,6 +49,7 @@ def process_labels(labels_json: list[dict]) -> pd.DataFrame:
     labels = labels.drop("perks", axis=1)
     labels = labels[labels["player_id"] != 4]
 
+    labels = labels.sort_values(["match_id", "player_id"])
     labels = labels.set_index(["match_id", "player_id"], drop=True)
 
     return labels

@@ -37,7 +37,7 @@ def create_ui(
                 with gr.Column():
                     PERK_W = 120
                     perks_box = images_box(perks, PERK_W)
-                    limgs = surv_labeler.get_limgs("png")
+                    limgs = surv_labeler.get_limgs("jpg")
                     perks_objs = {
                         i: perks_box(rcc, limgs[i])
                         for i, rcc in enumerate(ROW_COLORS_CLASSES)
@@ -56,6 +56,7 @@ def create_ui(
                         os.environ["DBDIE_MAIN_FD"],
                         f"data/img/cropped/{surv_labeler.current['match']['filename']}",
                     ),
+                    label={surv_labeler.current['match']['filename']},
                     interactive=False,
                     height="83vh",
                 )

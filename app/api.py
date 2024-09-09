@@ -59,24 +59,32 @@ def cache_perks(is_for_killer: bool, local_fallback: bool) -> None:
     perks.to_csv(path, index=False)
 
 
-def upload_labels(labels) -> None:
+def upload_labels(match_id: int, labels: list[int]) -> None:
     """Upload labels set by the user."""
-    # TODO: Upload labels working code
     for player_id in range(4):
         min_id = 4 * player_id
         max_id = 4 * (player_id + 1)
         print(labels[min_id:max_id], end="\t")
     print()
 
-    # for player_id in range(4):
-    #     resp = requests.post(
-    #         endp(f"/perks/{id}"),
-    #         json={
-    #             "fmts": ["perks__killer"],
-    #             "filename": "FILENAME",  # TODO
-    #         },
-    #     )
-    #     if resp.status_code != 201:
-    #         raise Exception(resp.reason)
+    # TODO
+    for player_id in range(4):
+        min_id = 4 * player_id
+        max_id = 4 * (player_id + 1)
+
+        resp = requests.put(
+            endp("/labels/filter"),
+            params={
+                "match_id": match_id,
+                "player_id": player_id,
+            },
+            json=labels[min_id:max_id],
+        )
+        if resp.status_code != 200:
+            try:
+                msg = resp.json()
+            except requests.exceptions.JSONDecodeError:
+                msg = resp.reason
+            raise Exception(msg)
 
     print(20 * "-")
