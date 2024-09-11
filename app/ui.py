@@ -10,7 +10,7 @@ from components.quick_labeling import (
     flatten_objs,
     images_box,
     make_label_fn,
-    ql_buttons,
+    ql_button_logic,
 )
 from constants import ROW_COLORS_CLASSES
 
@@ -42,9 +42,7 @@ def create_ui(
                         i: perks_box(rcc, limgs[i])
                         for i, rcc in enumerate(ROW_COLORS_CLASSES)
                     }
-                    ql_all_empty_btt, ql_label_btt, ql_match_md = ql_buttons(
-                        surv_labeler
-                    )
+                    ql_dict = ql_button_logic(surv_labeler)
 
         with gr.Tab("Current match"):
             with gr.Row(visible=surv_labeler.done) as cr_note_row:
@@ -71,30 +69,47 @@ def create_ui(
         with gr.Tab("Training corpus"):
             # Information about the DBDIE base (WIP)
             with gr.Row():
-                tc_img = gr.Image()
+                tc_info = gr.Markdown()
 
         # * Button actions
 
         label_fn = make_label_fn(surv_labeler, upload=True)
+        prev_fn = make_label_fn(surv_labeler, upload=False, go_back=True)
 
-        ql_all_empty_btt.click(
-            empty_fn,
-            inputs=flatten_objs(perks_objs, "dropdowns"),
-            outputs=flatten_objs(perks_objs, "dropdowns"),
-        )
-        ql_label_btt.click(
-            label_fn,
-            inputs=flatten_objs(perks_objs, "images")
-            + flatten_objs(perks_objs, "dropdowns"),
-            outputs=flatten_objs(perks_objs, "images")
-            + flatten_objs(perks_objs, "dropdowns")
+        flattened_dds = flatten_objs(perks_objs, "dropdowns")
+        flattened_imgs = flatten_objs(perks_objs, "images")
+
+        ql_dict["previous_btt"].click(
+            prev_fn,
+            inputs=flattened_imgs + flattened_dds,
+            outputs=flattened_imgs + flattened_dds
             + [
                 cr_match_img,
-                ql_match_md,
+                ql_dict["match_md"],
                 ql_note_row,
                 ql_labeling_row,
                 cr_note_row,
                 cr_img_row,
+                tc_info,
+            ],
+        )
+        ql_dict["all_empty_btt"].click(
+            empty_fn,
+            inputs=flattened_dds,
+            outputs=flattened_dds,
+        )
+        ql_dict["label_btt"].click(
+            label_fn,
+            inputs=flattened_imgs + flattened_dds,
+            outputs=flattened_imgs + flattened_dds
+            + [
+                cr_match_img,
+                ql_dict["match_md"],
+                ql_note_row,
+                ql_labeling_row,
+                cr_note_row,
+                cr_img_row,
+                tc_info,
             ],
         )
 
@@ -110,17 +125,16 @@ def create_ui(
 
         ui.load(
             sync_labels_fn,
-            inputs=flatten_objs(perks_objs, "images")
-            + flatten_objs(perks_objs, "dropdowns"),
-            outputs=flatten_objs(perks_objs, "images")
-            + flatten_objs(perks_objs, "dropdowns")
+            inputs=flattened_imgs + flattened_dds,
+            outputs=flattened_imgs + flattened_dds
             + [
                 cr_match_img,
-                ql_match_md,
+                ql_dict["match_md"],
                 ql_note_row,
                 ql_labeling_row,
                 cr_note_row,
                 cr_img_row,
+                tc_info,
             ],
         )
 

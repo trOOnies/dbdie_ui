@@ -1,11 +1,11 @@
-"""Functions for quick_labeling component"""
+"""Functions for quick_labeling component."""
 
-import os
 from typing import TYPE_CHECKING, Callable
 
 import gradio as gr
-from api import upload_labels
+from api import get_tc_info, upload_labels
 from img import rescale_img
+from code.quick_labeling import update_images, update_match_md, toggle_rows_visibility, next_info
 
 if TYPE_CHECKING:
     from classes.surv_labeler import SurvLabeler
@@ -13,9 +13,12 @@ if TYPE_CHECKING:
 Options = list[tuple[str, int]]
 LabeledImages = list[tuple[str, int]]
 LabelBox = Callable[[str, int], tuple[gr.Image, gr.Dropdown]]
+
+ImageDict = dict[int, gr.Image]
+DropdownDict = dict[int, gr.Dropdown]
 ImageBox = Callable[
     [str, LabeledImages],
-    dict[str, dict[int, gr.Image] | dict[int, gr.Dropdown]],
+    dict[str, ImageDict | DropdownDict],
 ]
 
 
@@ -25,7 +28,7 @@ def images_box(options: Options, w: int) -> ImageBox:
     def form_images(
         rcc: str,
         limgs: LabeledImages,
-    ) -> dict[str, dict[int, gr.Image] | dict[int, gr.Dropdown]]:
+    ) -> dict[str, ImageDict | DropdownDict]:
         """Create images in a Gradio Row."""
         with gr.Row(elem_classes=rcc):
             with gr.Column(scale=1, min_width=10, elem_classes="option-col"):
@@ -57,7 +60,10 @@ def images_box(options: Options, w: int) -> ImageBox:
     return form_images
 
 
-def flatten_objs(objs: dict[int, dict], kind: str) -> list:
+def flatten_objs(
+    objs: dict[int, dict[str, ImageDict | DropdownDict]],
+    kind: str,
+) -> list[gr.Image | gr.Dropdown]:
     return [o for row in objs.values() for o in row[kind].values()]
 
 
@@ -67,12 +73,14 @@ def empty_fn(*input_data):
     return [gr.update(value=label) for label in updated_data]
 
 
-def make_label_fn(surv_lbl: "SurvLabeler", upload: bool):
+def make_label_fn(surv_lbl: "SurvLabeler", upload: bool, go_back: bool = False):
     """Make the main label (button) function.
 
     upload: Toggles the upload and the changing of the labels for the following ones.
         If false, it's useful for synching when refreshing.
     """
+    if go_back:
+        assert not upload, "You can't upload labels when going backwards"
 
     def label_fn(*input_data):
         """Main label function. Also used for synching objects when refreshing.
@@ -82,68 +90,55 @@ def make_label_fn(surv_lbl: "SurvLabeler", upload: bool):
         assert len(input_data) == 32
 
         if upload:
-            upload_labels(surv_lbl.current["match"]["id"], input_data[16:])
+            upload_labels(surv_lbl, list(input_data[16:]))
             updated_data = surv_lbl.next()
+        elif go_back:
+            updated_data = surv_lbl.next(go_back=True)
         else:
             updated_data = surv_lbl.current["labels_flat"]
 
-        if not surv_lbl.done:
-            crops = surv_lbl.get_crops("jpg")
-            match_img_path = os.path.join(
-                os.environ["DBDIE_MAIN_FD"],
-                f"data/img/cropped/{surv_lbl.current['match']['filename']}",
-            )
-        else:
-            print("LABELING DONE")
-            crops = [None for _ in range(16)]
-            updated_data = [0 for _ in range(16)]
-            match_img_path = None
+        crops, updated_data, match_img_path = next_info(surv_lbl, updated_data)
 
         print(match_img_path)
+        with open("app/configs/tc_info.md") as f:
+            tc_info = f.read()
 
         return (
-            [
-                gr.update(
-                    value=rescale_img(img, 120) if isinstance(img, str) else None,
-                    label=match_img_path,
-                    interactive=False,
-                    height="11em",
-                    container=False,
-                )
-                for img in crops
-            ]  # images
+            update_images(crops, match_img_path)  # images
             + [gr.update(value=label) for label in updated_data]  # dropdowns
             + [gr.update(value=match_img_path)]  # match image
+            + update_match_md(surv_lbl)  # match markdown
+            + toggle_rows_visibility(surv_lbl.done)
             + [
-                gr.update(
-                    value=f"Match: {surv_lbl.current['match']['filename']}"
-                    if not surv_lbl.done
-                    else ""
-                )
-            ]  # match markdown
-            + [
-                gr.update(visible=surv_lbl.done),  # note row
-                gr.update(visible=not surv_lbl.done),  # labeling row
-                gr.update(visible=surv_lbl.done),  # current match note row
-                gr.update(visible=not surv_lbl.done),  # current match row
-            ]
+                gr.update(value=tc_info.format(**get_tc_info()))  # TODO: change to a cached counter
+            ]  # training corpus info
         )
 
     return label_fn
 
 
-def ql_buttons(
+# * Main logic
+
+
+def ql_button_logic(
     surv_labeler: "SurvLabeler",
-) -> tuple[gr.Button, gr.Button, gr.Markdown]:
-    """Create quick_labeling buttons"""
+) -> dict[str, gr.Button | gr.Markdown]:
+    """Create quick_labeling buttons."""
     with gr.Row():
-        with gr.Column(scale=1, min_width=100):
-            ql_match_md = gr.Markdown(
-                f"Match: {surv_labeler.current['match']['filename']}"
+        with gr.Column(scale=1, min_width=200):
+            match_md = gr.Markdown(
+                f"Match: {surv_labeler.current['match']['filename']}",
             )
         with gr.Column(scale=17):
             with gr.Row():
-                ql_all_empty_btt = gr.Button("All Empty", variant="stop")
-                ql_label_btt = gr.Button("Label", variant="primary")
+                previous_btt = gr.Button("Previous")
+                all_empty_btt = gr.Button("All Empty", variant="stop")
+                label_btt = gr.Button("Label", variant="primary")
 
-    return ql_all_empty_btt, ql_label_btt, ql_match_md
+
+    return {
+        "match_md": match_md,
+        "previous_btt": previous_btt,
+        "all_empty_btt": all_empty_btt,
+        "label_btt": label_btt,
+    }

@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import os
+import numpy as np
 from code.surv_labeler import (
     calc_labels,
     get_matches_and_labels,
     process_labels,
     process_matches,
+    PERK_COLS,
 )
 
 import pandas as pd
 from paths import absp
 
-PERK_COLS = ["perk_0", "perk_1", "perk_2", "perk_3"]
 SURV_PERKS_FD = absp("data/crops/perks__surv")
 
 
@@ -31,6 +32,8 @@ class SurvLabeler:
             "match": {
                 "id": -1,
                 "filename": "placeholder",
+                "match_date": "placeholder",
+                "dbd_version": "placeholder",
             },
             "labels": {i: [-1, -1, -1, -1] for i in range(4)},
             "labels_flat": [-1 for _ in range(16)],
@@ -41,8 +44,8 @@ class SurvLabeler:
     @classmethod
     def from_files(cls, matches_path: str, labels_path: str) -> SurvLabeler:
         data = {
-            "matches": pd.read_csv(matches_path),
-            "labels": pd.read_csv(labels_path),
+            "matches": pd.read_csv(matches_path, usecols=["id", "filename"]),
+            "labels": pd.read_csv(labels_path, usecols=["match_id", "player_id"] + PERK_COLS),
         }
         return SurvLabeler(
             matches=data["matches"].set_index("id", drop=True),
@@ -90,40 +93,57 @@ class SurvLabeler:
             for j in range(4)
         ]
 
-    # TODO: Update method for when the data has been changed by the user
+    def _update_current_match(self) -> None:
+        self.current["match"]["id"] = self.pending[self._match_iat]
 
-    def next(self) -> list[int]:
+        current_row = self.matches.loc[self.current["match"]["id"]]
+        self.current["match"]["filename"] = current_row["filename"]
+        self.current["match"]["match_date"] = current_row["match_date"]
+        self.current["match"]["dbd_version"] = current_row["dbd_version"]
+
+    def _update_current_labels(self):
+        self.current["labels"] = calc_labels(self.labels, self.current["match"]["id"])
+        self.current["labels_flat"] = [
+            p for pl_perks in self.current["labels"].values() for p in pl_perks
+        ]
+
+    def next(self, go_back: bool = False) -> list[int]:
         """Proceed to the next match & labels."""
         # Prevent updating the pointer beyond completion
-        if self._match_iat == self.pending.size:
+        if not go_back and (self._match_iat == self.pending.size):
             return self.current["labels_flat"]
+        elif go_back and (self._match_iat <= 0):
+            raise ValueError("SurvLabeler pointer out of bounds.")
         elif self._match_iat > self.pending.size:
             raise ValueError("SurvLabeler pointer out of bounds.")
 
-        self._match_iat += 1
+        self._match_iat += -1 if go_back else 1
 
         # All matches have been labeled
         if self._match_iat == self.pending.size:
             self.done = True
             self.current = {"match": {}, "labels": {}, "labels_flat": []}
         else:
-            self.current["match"]["id"] = self.pending[self._match_iat]
-            self.current["match"]["filename"] = self.matches.at[
-                self.current["match"]["id"],
-                "filename",
-            ]
+            self._update_current_match()
+            self._update_current_labels()
 
-            self.current["labels"] = calc_labels(
-                self.labels,
-                self.current["match"]["id"],
-                PERK_COLS,
-            )
+        return self.current["labels_flat"]  # (pl0p1, pl0p2, pl0p3, pl0p4, pl1p1, ...) (16)
 
-            self.current["labels_flat"] = [
-                p for pl_perks in self.current["labels"].values() for p in pl_perks
-            ]
+    def previous(self) -> list[int]:
+        """Go to the previous match & labels."""
+        return self.next(go_back=True)
 
-        return self.current["labels_flat"]
+    def update_current(self, new_labels: list[int]) -> None:
+        """Update current values."""
+        assert len(new_labels) == 16
+
+        mask = self.labels.index.get_level_values(0) == self.current["match"]["id"]
+        rows_iloc = np.nonzero(mask)[0]
+        assert rows_iloc.size == 4
+        rows_loc = self.labels.index[rows_iloc]
+
+        self.labels.loc[rows_loc, PERK_COLS] = np.array(new_labels).reshape(4, 4)
+        self._update_current_labels()
 
     def fetch(self) -> None:
         """Delete previous information and fetch new ones."""

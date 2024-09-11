@@ -1,15 +1,30 @@
-"""API related functions"""
+"""API related functions."""
 
 import os
 
+from typing import TYPE_CHECKING
 import pandas as pd
 import requests
 from constants import NO_KILLER_PERK, NO_SURV_PERK
+
+if TYPE_CHECKING:
+    from classes.surv_labeler import SurvLabeler
 
 
 def endp(endpoint: str) -> str:
     """Get full URL of the endpoint."""
     return f"{os.environ['FASTAPI_HOST']}/{endpoint}"
+
+
+def parse_or_raise(resp, exp_status_code: int = 200):
+    """Parse Response as JSON or raise error as exception, depending on status code."""
+    if resp.status_code != exp_status_code:
+        try:
+            msg = resp.json()
+        except requests.exceptions.JSONDecodeError:
+            msg = resp.reason
+        raise Exception(msg)
+    return resp.json()
 
 
 def clean_perks(perks_json: list[dict], is_for_killer: bool) -> pd.DataFrame:
@@ -59,15 +74,20 @@ def cache_perks(is_for_killer: bool, local_fallback: bool) -> None:
     perks.to_csv(path, index=False)
 
 
-def upload_labels(match_id: int, labels: list[int]) -> None:
+def upload_labels(surv_lbl: "SurvLabeler", labels: list[int]) -> None:
     """Upload labels set by the user."""
+    if surv_lbl.current["labels_flat"] != labels:
+        print("LABELS WERE CHANGED")
+        print(surv_lbl.current["labels_flat"])
+        print(labels)
+        surv_lbl.update_current(labels)
+
     for player_id in range(4):
         min_id = 4 * player_id
         max_id = 4 * (player_id + 1)
         print(labels[min_id:max_id], end="\t")
     print()
 
-    # TODO
     for player_id in range(4):
         min_id = 4 * player_id
         max_id = 4 * (player_id + 1)
@@ -75,7 +95,7 @@ def upload_labels(match_id: int, labels: list[int]) -> None:
         resp = requests.put(
             endp("/labels/filter"),
             params={
-                "match_id": match_id,
+                "match_id": surv_lbl.current["match"]["id"],
                 "player_id": player_id,
             },
             json=labels[min_id:max_id],
@@ -88,3 +108,43 @@ def upload_labels(match_id: int, labels: list[int]) -> None:
             raise Exception(msg)
 
     print(20 * "-")
+
+
+def get_tc_info() -> dict[str, int]:
+    """Get training corpus info.
+    Nomenclature:
+    - k Killer, s Survivor
+    - p Pending, c Checked
+    - t Total
+    """
+    # TODO: Change when migrated to FMT-dependent manual check
+    total = 4 * parse_or_raise(
+            requests.get(
+            endp("/labels/count"),
+        )
+    )
+    kp = 4 * parse_or_raise(
+            requests.get(
+            endp("/labels/count"),
+            params={"is_killer": True},  # TODO: For now they are not checked
+        )
+    )
+    sc = 4 * parse_or_raise(
+            requests.get(
+            endp("/labels/count"),
+            params={"is_killer": False, "manually_checked": True},
+        )
+    )
+
+    sp = total - kp - sc
+
+    return {
+        "kp": kp,
+        "kc": 0,
+        "sp": sp,
+        "sc": sc,
+        "tp": sp + kp,
+        "tc": sc + 0,
+        "kt": kp,
+        "st": sp + sc,
+    }
