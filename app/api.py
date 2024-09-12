@@ -132,7 +132,10 @@ def get_tc_info() -> dict[str, int]:
     sc = 4 * parse_or_raise(
             requests.get(
             endp("/labels/count"),
-            params={"is_killer": False, "manually_checked": True},
+            params={"is_killer": False},
+            json={
+                "perks": True,  # TODO
+            },
         )
     )
 

@@ -41,7 +41,7 @@ class Labeler:
         self.n_items = len(self.columns)
 
         # TODO: Make it fmt-dependent
-        self.pending = np.nonzero(self.labels["manually_checked"])[0]  # ! CHANGE
+        self.pending = np.nonzero(self.labels[f"{self.mt}_mckd"])[0]  # ! CHANGE
         print(self.pending)
         self._ptr_min = - self.n_players
         self._ptr_max = 0

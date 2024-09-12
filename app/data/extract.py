@@ -3,6 +3,9 @@ import pandas as pd
 
 from api import endp
 from paths import IMG_REF_RP
+from options.MODEL_TYPES import ALL as ALL_MT
+
+MANUALLY_CHECKED_COLS = [f"{fmt}_mckd" for fmt in ALL_MT]
 
 
 def get_matches_and_labels() -> tuple[list[dict], list[dict]]:
@@ -39,15 +42,19 @@ def process_labels(labels_json: list[dict]) -> pd.DataFrame:
     """Process labels' JSON and convert to DataFrame."""
     labels = pd.DataFrame(
         [
-            {k: v for k, v in lbl.items() if k in ["match_id", "player", "manually_checked"]}
+            {k: v for k, v in lbl.items() if k in ["match_id", "player", "manual_checks"]}
             for lbl in labels_json
         ]
     )
 
-    labels["manually_checked"] = labels["manually_checked"].fillna(False)
-    labels["player_id"] = labels["player"].map(lambda pl: pl["id"])
+    for c in MANUALLY_CHECKED_COLS:
+        labels[c] = labels["manual_checks"].map(lambda v: v[c[:-5]])
+    labels = labels.drop("manual_checks", axis=1)
+    
+    labels[MANUALLY_CHECKED_COLS] = labels[MANUALLY_CHECKED_COLS].fillna(False)
 
     # Extract info from player
+    labels["player_id"] = labels["player"].map(lambda pl: pl["id"])
     labels["character"] = labels["player"].map(lambda pl: pl["character_id"])
     labels["perks"] = labels["player"].map(lambda pl: pl["perk_ids"])
     labels["item"] = labels["player"].map(lambda pl: pl["item_id"])
