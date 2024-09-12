@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-# TODO: Matches and perks load functions, with pre-ordering
+from paths import IMG_REF_RP
 
 
 def load_perks(is_for_killer: bool) -> list[tuple[str, int]]:
@@ -15,3 +15,17 @@ def load_perks(is_for_killer: bool) -> list[tuple[str, int]]:
     )
     perks = perks.to_list()
     return perks
+
+
+# * Instantiation
+
+
+def load_from_files() -> tuple[pd.DataFrame, pd.DataFrame]:
+    data = {
+        "matches": pd.read_csv(f"{IMG_REF_RP}/matches.csv"),
+        "labels": pd.read_csv(f"{IMG_REF_RP}/labels.csv"),
+    }
+    return (
+        data["matches"].set_index("id", drop=True),
+        data["labels"].set_index(["match_id", "player_id"], drop=True),
+    )

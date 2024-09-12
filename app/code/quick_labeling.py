@@ -13,7 +13,7 @@ def next_info(surv_lbl, updated_data: list[int]) -> tuple[str | None, list[int],
             updated_data,
             os.path.join(
                 os.environ["DBDIE_MAIN_FD"],
-                f"data/img/cropped/{surv_lbl.current['match']['filename']}",
+                f"data/img/cropped/{surv_lbl.filename(0)}",  # TODO: Change
             ),
         )
     else:
@@ -39,14 +39,14 @@ def update_images(crops: list[str | None], match_img_path: str) -> list[GradioUp
 
 
 def update_match_md(surv_lbl) -> list[GradioUpdate]:
-    curr_m = surv_lbl.current['match']
+    curr = surv_lbl.current.iloc[0]
     text = (
         "<br>".join(
             [
-                f"🖼️ ({curr_m['id']}) {curr_m['filename']}",
-                f"📅 {curr_m['match_date']}",
-                f"🆚 {curr_m['dbd_version']}",
-            ]
+                f"🖼️ ({curr['m_id']}) {curr['m_filename']}",
+                f"📅 {curr['m_match_date']}",
+                f"🆚 {curr['m_dbd_version']}",
+            ]  # TODO: Change
         )
         if not surv_lbl.done
         else ""

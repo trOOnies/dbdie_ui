@@ -8,7 +8,7 @@ import requests
 from constants import NO_KILLER_PERK, NO_SURV_PERK
 
 if TYPE_CHECKING:
-    from classes.surv_labeler import SurvLabeler
+    from classes.labeler import SurvLabeler
 
 
 def endp(endpoint: str) -> str:
@@ -76,9 +76,9 @@ def cache_perks(is_for_killer: bool, local_fallback: bool) -> None:
 
 def upload_labels(surv_lbl: "SurvLabeler", labels: list[int]) -> None:
     """Upload labels set by the user."""
-    if surv_lbl.current["labels_flat"] != labels:
+    if surv_lbl.current["labels"].to_list() != labels:
         print("LABELS WERE CHANGED")
-        print(surv_lbl.current["labels_flat"])
+        print(surv_lbl.current["labels"].to_list())
         print(labels)
         surv_lbl.update_current(labels)
 

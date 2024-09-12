@@ -13,9 +13,10 @@ from components.quick_labeling import (
     ql_button_logic,
 )
 from constants import ROW_COLORS_CLASSES
+from paths import CROPPED_IMG_RP, absp
 
 if TYPE_CHECKING:
-    from classes.surv_labeler import SurvLabeler
+    from classes.labeler import SurvLabeler
 
 
 def create_ui(
@@ -39,7 +40,7 @@ def create_ui(
                     perks_box = images_box(perks, PERK_W)
                     limgs = surv_labeler.get_limgs("jpg")
                     perks_objs = {
-                        i: perks_box(rcc, limgs[i])
+                        i: perks_box(rcc, limgs[4 * i : 4 * (i+1)])
                         for i, rcc in enumerate(ROW_COLORS_CLASSES)
                     }
                     ql_dict = ql_button_logic(surv_labeler)
@@ -49,12 +50,13 @@ def create_ui(
                 gr.Markdown("No match selected. 🤷")
 
             with gr.Row(visible=not surv_labeler.done) as cr_img_row:
+                filename = surv_labeler.filename(0)  # TODO: Change
                 cr_match_img = gr.Image(
                     os.path.join(
-                        os.environ["DBDIE_MAIN_FD"],
-                        f"data/img/cropped/{surv_labeler.current['match']['filename']}",
-                    ),
-                    label={surv_labeler.current['match']['filename']},
+                        absp(CROPPED_IMG_RP),
+                        filename,
+                    ) if filename is not None else filename,
+                    label={filename},
                     interactive=False,
                     height="83vh",
                 )

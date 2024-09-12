@@ -8,7 +8,7 @@ from img import rescale_img
 from code.quick_labeling import update_images, update_match_md, toggle_rows_visibility, next_info
 
 if TYPE_CHECKING:
-    from classes.surv_labeler import SurvLabeler
+    from classes.labeler import SurvLabeler
 
 Options = list[tuple[str, int]]
 LabeledImages = list[tuple[str, int]]
@@ -95,7 +95,7 @@ def make_label_fn(surv_lbl: "SurvLabeler", upload: bool, go_back: bool = False):
         elif go_back:
             updated_data = surv_lbl.next(go_back=True)
         else:
-            updated_data = surv_lbl.current["labels_flat"]
+            updated_data = surv_lbl.current["label_id"].to_list()
 
         crops, updated_data, match_img_path = next_info(surv_lbl, updated_data)
 
@@ -126,9 +126,8 @@ def ql_button_logic(
     """Create quick_labeling buttons."""
     with gr.Row():
         with gr.Column(scale=1, min_width=200):
-            match_md = gr.Markdown(
-                f"Match: {surv_labeler.current['match']['filename']}",
-            )
+            filename = surv_labeler.filename
+            match_md = gr.Markdown(f"Match: {filename if filename is not None else ''}")
         with gr.Column(scale=17):
             with gr.Row():
                 previous_btt = gr.Button("Previous")

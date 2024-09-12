@@ -3,7 +3,10 @@
 from PIL import Image
 
 
-def rescale_img(path: str, base_w: int) -> Image.Image:
+def rescale_img(path: str | None, base_w: int) -> Image.Image | None:
+    if path is None:
+        return None
+
     img = Image.open(path)
 
     wpercent = base_w / float(img.size[0])
