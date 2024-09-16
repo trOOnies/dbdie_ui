@@ -1,5 +1,8 @@
 # DBDIE UI
+
 Dead By Daylight's Information Extraction (DBDIE) UI in Gradio.
+
+<img src="docs/dbdie_ui.png"></img>
 
 ## See also
 
