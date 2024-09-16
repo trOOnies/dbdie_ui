@@ -2,13 +2,16 @@
 
 import os
 
-from typing import TYPE_CHECKING
 import pandas as pd
 import requests
+from typing import TYPE_CHECKING
+
 from constants import NO_KILLER_PERK, NO_SURV_PERK
+from options.MODEL_TYPES import MT_TO_SCHEMA_ATTR
 
 if TYPE_CHECKING:
-    from classes.labeler import SurvLabeler
+    from classes.base import LabelId, ModelType
+    from classes.labeler import Labeler
 
 
 def endp(endpoint: str) -> str:
@@ -41,64 +44,68 @@ def clean_perks(perks_json: list[dict], is_for_killer: bool) -> pd.DataFrame:
         ignore_index=True,
     )
 
-    perks["emoji"] = perks["emoji"].fillna("❓")
+    if "emoji" in perks.columns.values:
+        perks["emoji"] = perks["emoji"].fillna("❓")
+
     return perks
 
 
-def cache_perks(is_for_killer: bool, local_fallback: bool) -> None:
-    """Get perks from the API and cache."""
-    path = f"app/cache/perks__{'killer' if is_for_killer else 'surv'}.csv"
+def cache_function(mt: "ModelType", is_for_killer: bool, clean_f, local_fallback: bool) -> None:
+    """Get predictables from the API and cache."""
+    path = f"app/cache/predictables/{mt}__{'killer' if is_for_killer else 'surv'}.csv"
 
     try:
-        perks = requests.get(
-            endp("/perks"),
-            params={"is_for_killer": is_for_killer, "limit": 3000},
+        ifk_key = "is_killer" if mt == "character" else "is_for_killer"
+        items = requests.get(
+            endp(f"/{mt}"),
+            params={ifk_key: is_for_killer, "limit": 10_000},
         )
-        if perks.status_code != 200:
-            raise AssertionError(perks.reason)
+        if items.status_code != 200:
+            raise AssertionError(items.reason)
     except Exception as e:
         print("[WARNING] Problem with the API.")
         if not local_fallback:
-            raise Exception(perks.reason) from e
+            raise Exception(items.reason) from e
         else:
             if os.path.exists(path):
                 print("Using local data.")
                 return
             else:
                 print("[ERROR] Local data not found.")
-                raise Exception(perks.reason) from e
+                raise Exception(items.reason) from e
 
-    perks_json = perks.json()
-    perks = clean_perks(perks_json, is_for_killer)
+    items_json = items.json()
+    items = clean_f(items_json, is_for_killer)
 
-    perks.to_csv(path, index=False)
+    items.to_csv(path, index=False)
 
 
-def upload_labels(surv_lbl: "SurvLabeler", labels: list[int]) -> None:
+def upload_labels(labeler: "Labeler", labels: list["LabelId"]) -> None:
     """Upload labels set by the user."""
-    if surv_lbl.current["labels"].to_list() != labels:
+    if labeler.current["label_id"].to_list() != labels:
         print("LABELS WERE CHANGED")
-        print(surv_lbl.current["labels"].to_list())
+        print(labeler.current["label_id"].to_list())
         print(labels)
-        surv_lbl.update_current(labels)
+        labeler.update_current(labels)
 
-    for player_id in range(4):
-        min_id = 4 * player_id
-        max_id = 4 * (player_id + 1)
-        print(labels[min_id:max_id], end="\t")
-    print()
+    labels_wrapped = labeler.wrap(labels)
 
-    for player_id in range(4):
-        min_id = 4 * player_id
-        max_id = 4 * (player_id + 1)
+    for player_ix in range(labeler.n_players):
+        match_id, player_id = labeler.get_key(player_ix)
+        player_labels = labels_wrapped[player_ix].tolist()
+        player_labels = (
+            int(player_labels[0])
+            if len(player_labels) == 1
+            else [int(v) for v in player_labels]
+        )
 
         resp = requests.put(
-            endp("/labels/filter"),
-            params={
-                "match_id": surv_lbl.current["match"]["id"],
-                "player_id": player_id,
+            endp("/labels/predictable"),
+            params={"match_id": match_id, "strict": True},
+            json={
+                "id": player_id,
+                MT_TO_SCHEMA_ATTR[labeler.mt]: player_labels,
             },
-            json=labels[min_id:max_id],
         )
         if resp.status_code != 200:
             try:
@@ -106,8 +113,6 @@ def upload_labels(surv_lbl: "SurvLabeler", labels: list[int]) -> None:
             except requests.exceptions.JSONDecodeError:
                 msg = resp.reason
             raise Exception(msg)
-
-    print(20 * "-")
 
 
 def get_tc_info() -> dict[str, int]:
@@ -118,36 +123,42 @@ def get_tc_info() -> dict[str, int]:
     - t Total
     """
     # TODO: Change when migrated to FMT-dependent manual check
-    total = 4 * parse_or_raise(
+    counts = {
+        "kc": parse_or_raise(
             requests.get(
-            endp("/labels/count"),
-        )
-    )
-    kp = 4 * parse_or_raise(
+                endp("/labels/count"),
+                params={"is_killer": True},
+                json={"perks": True},
+            )
+        ),
+        "kp": parse_or_raise(
             requests.get(
-            endp("/labels/count"),
-            params={"is_killer": True},  # TODO: For now they are not checked
-        )
-    )
-    sc = 4 * parse_or_raise(
+                endp("/labels/count"),
+                params={"is_killer": True},
+                json={"perks": False},
+            )
+        ),
+        "sc": parse_or_raise(
             requests.get(
-            endp("/labels/count"),
-            params={"is_killer": False},
-            json={
-                "perks": True,  # TODO
-            },
-        )
-    )
-
-    sp = total - kp - sc
-
-    return {
-        "kp": kp,
-        "kc": 0,
-        "sp": sp,
-        "sc": sc,
-        "tp": sp + kp,
-        "tc": sc + 0,
-        "kt": kp,
-        "st": sp + sc,
+                endp("/labels/count"),
+                params={"is_killer": False},
+                json={"perks": True},
+            )
+        ),
+        "sp": parse_or_raise(
+            requests.get(
+                endp("/labels/count"),
+                params={"is_killer": False},
+                json={"perks": False},
+            )
+        ),
     }
+    counts = {k: 4 * v for k, v in counts.items()}
+    counts = counts | {
+        "kt": counts["kc"] + counts["kp"],
+        "st": counts["sc"] + counts["sp"],
+        "tc": counts["kc"] + counts["sc"],
+        "tp": counts["kp"] + counts["sp"],
+    }
+
+    return counts

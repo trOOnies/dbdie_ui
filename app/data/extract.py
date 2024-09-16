@@ -3,7 +3,7 @@ import pandas as pd
 
 from api import endp
 from paths import IMG_REF_RP
-from options.MODEL_TYPES import ALL as ALL_MT
+from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT
 
 MANUALLY_CHECKED_COLS = [f"{fmt}_mckd" for fmt in ALL_MT]
 
@@ -47,6 +47,7 @@ def process_labels(labels_json: list[dict]) -> pd.DataFrame:
         ]
     )
 
+    labels["manual_checks"] = labels["manual_checks"].map(lambda v: v["predictables"])
     for c in MANUALLY_CHECKED_COLS:
         labels[c] = labels["manual_checks"].map(lambda v: v[c[:-5]])
     labels = labels.drop("manual_checks", axis=1)
@@ -62,6 +63,7 @@ def process_labels(labels_json: list[dict]) -> pd.DataFrame:
     labels["offering"] = labels["player"].map(lambda pl: pl["offering_id"])
     labels["status"] = labels["player"].map(lambda pl: pl["status_id"])
     labels["points"] = labels["player"].map(lambda pl: pl["points"])
+    labels["prestige"] = labels["player"].map(lambda pl: pl["prestige"])
     labels = labels.drop("player", axis=1)
 
     for i in range(4):

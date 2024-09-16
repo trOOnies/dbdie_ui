@@ -1,12 +1,13 @@
 """Main script for DBDIE UI."""
 
-from api import cache_perks
-from classes.labeler import Labeler
 from dotenv import load_dotenv
-from ui import create_ui
 
+from api import clean_perks, cache_function
+from classes.labeler import Labeler, LabelerSelector
 from data.extract import extract_from_api
-from data.load import load_perks, load_from_files
+from data.load import load_from_files
+from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
+from ui import create_ui
 
 with open("app/styles.css") as f:
     CSS = f.read()
@@ -15,18 +16,21 @@ with open("app/styles.css") as f:
 def main() -> None:
     load_dotenv(".env")
 
-    is_for_killer = False
-
-    cache_perks(is_for_killer=is_for_killer, local_fallback=False)
-    perks = load_perks(is_for_killer)
+    for mt in ALL_MT_MULT:
+        for ifk in [True, False]:
+            cache_function(mt, ifk, clean_perks, local_fallback=False)  # TODO: Clean functions for each MT
 
     extract_from_api()
     matches, labels = load_from_files()
 
-    perks_slb = Labeler(matches, labels, fmt="perks__surv")
-    perks_slb.next()
+    labelers = {
+        f"{mt}__{ks}": Labeler(matches, labels, fmt=f"{mt}__{ks}")
+        for mt in ALL_MT_MULT
+        for ks in ["killer", "surv"]
+    }
+    labeler_orch = LabelerSelector(labelers)
 
-    ui = create_ui(CSS, perks_slb, perks)
+    ui = create_ui(CSS, labeler_orch)
     ui.launch()
 
 

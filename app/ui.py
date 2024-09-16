@@ -1,9 +1,9 @@
 """UI function script."""
 
 import os
+import gradio as gr
 from typing import TYPE_CHECKING
 
-import gradio as gr
 from components.inference import inference_fn
 from components.quick_labeling import (
     empty_fn,
@@ -13,44 +13,62 @@ from components.quick_labeling import (
     ql_button_logic,
 )
 from constants import ROW_COLORS_CLASSES
+from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT
+from options.MODEL_TYPES import EMOJIS as MT_EMOJIS
 from paths import CROPPED_IMG_RP, absp
 
 if TYPE_CHECKING:
-    from classes.labeler import SurvLabeler
+    from classes.labeler import LabelerSelector
 
 
 def create_ui(
     css: str,
-    surv_labeler: "SurvLabeler",
-    perks: list[tuple[str, int]],
+    labeler_orch: "LabelerSelector",
 ) -> gr.Blocks:
-    """Create the Gradio Blocks-based UI"""
+    """Create the Gradio Blocks-based UI."""
+    # Select current labeler
+    labeler = labeler_orch.labeler
+
     with gr.Blocks(title="DBDIE", fill_width=True, css=css) as ui:
         gr.Markdown("# DBDIE UI with Gradio")
 
         with gr.Tab("Quick labeling"):
             # * Confirming the predictions of a model
 
-            with gr.Row(visible=surv_labeler.done) as ql_note_row:
+            with gr.Row() as ql_note_row:
+                mt_dd = gr.Dropdown(
+                    choices=[f"{em} {mt.capitalize()}" for em, mt in zip(MT_EMOJIS, ALL_MT)],
+                    value="💠 Perks",
+                    interactive=True,
+                    container=False,
+                )
+                ks_dd = gr.Dropdown(
+                    choices=["👹 Killer", "😎 Survivor"],
+                    value="😎 Survivor",
+                    interactive=True,
+                    container=False,
+                )
+
+            with gr.Row(visible=labeler.done) as ql_note_row:
                 gr.Markdown("No more labels to validate. Good job! 👻")
 
-            with gr.Row(visible=not surv_labeler.done) as ql_labeling_row:
+            with gr.Row(visible=not labeler.done) as ql_labeling_row:
                 with gr.Column():
                     PERK_W = 120
-                    perks_box = images_box(perks, PERK_W)
-                    limgs = surv_labeler.get_limgs("jpg")
+                    perks_box = images_box(labeler_orch.options, PERK_W)
+                    limgs = labeler.get_limgs("jpg")
                     perks_objs = {
                         i: perks_box(rcc, limgs[4 * i : 4 * (i+1)])
                         for i, rcc in enumerate(ROW_COLORS_CLASSES)
                     }
-                    ql_dict = ql_button_logic(surv_labeler)
+                    ql_dict = ql_button_logic(labeler)
 
         with gr.Tab("Current match"):
-            with gr.Row(visible=surv_labeler.done) as cr_note_row:
+            with gr.Row(visible=labeler.done) as cr_note_row:
                 gr.Markdown("No match selected. 🤷")
 
-            with gr.Row(visible=not surv_labeler.done) as cr_img_row:
-                filename = surv_labeler.filename(0)  # TODO: Change
+            with gr.Row(visible=not labeler.done) as cr_img_row:
+                filename = labeler.filename(0)  # TODO: Change
                 cr_match_img = gr.Image(
                     os.path.join(
                         absp(CROPPED_IMG_RP),
@@ -75,25 +93,26 @@ def create_ui(
 
         # * Button actions
 
-        label_fn = make_label_fn(surv_labeler, upload=True)
-        prev_fn = make_label_fn(surv_labeler, upload=False, go_back=True)
-
         flattened_dds = flatten_objs(perks_objs, "dropdowns")
         flattened_imgs = flatten_objs(perks_objs, "images")
+        flattened_fmt_dds = [mt_dd, ks_dd]
+        other_lbl_related = [
+            cr_match_img,
+            ql_dict["match_md"],
+            ql_note_row,
+            ql_labeling_row,
+            cr_note_row,
+            cr_img_row,
+            tc_info,
+        ]
+
+        label_fn = make_label_fn(labeler_orch, upload=True)
+        prev_fn = make_label_fn(labeler_orch, upload=False, go_back=True)
 
         ql_dict["previous_btt"].click(
             prev_fn,
-            inputs=flattened_imgs + flattened_dds,
-            outputs=flattened_imgs + flattened_dds
-            + [
-                cr_match_img,
-                ql_dict["match_md"],
-                ql_note_row,
-                ql_labeling_row,
-                cr_note_row,
-                cr_img_row,
-                tc_info,
-            ],
+            inputs=flattened_dds + flattened_fmt_dds,
+            outputs=flattened_imgs + flattened_dds + other_lbl_related,
         )
         ql_dict["all_empty_btt"].click(
             empty_fn,
@@ -102,17 +121,8 @@ def create_ui(
         )
         ql_dict["label_btt"].click(
             label_fn,
-            inputs=flattened_imgs + flattened_dds,
-            outputs=flattened_imgs + flattened_dds
-            + [
-                cr_match_img,
-                ql_dict["match_md"],
-                ql_note_row,
-                ql_labeling_row,
-                cr_note_row,
-                cr_img_row,
-                tc_info,
-            ],
+            inputs=flattened_dds + flattened_fmt_dds,
+            outputs=flattened_imgs + flattened_dds + other_lbl_related,
         )
 
         inf_btt.click(
@@ -121,23 +131,27 @@ def create_ui(
             outputs=inf_ta,
         )
 
+        change_fn = make_label_fn(labeler_orch, upload=False)
+
+        mt_dd.change(
+            change_fn,
+            inputs=flattened_dds + flattened_fmt_dds,
+            outputs=flattened_imgs + flattened_dds + other_lbl_related,
+        )
+        ks_dd.change(
+            change_fn,
+            inputs=flattened_dds + flattened_fmt_dds,
+            outputs=flattened_imgs + flattened_dds + other_lbl_related,
+        )
+
         # * Load actions
 
-        sync_labels_fn = make_label_fn(surv_labeler, upload=False)
+        sync_labels_fn = make_label_fn(labeler_orch, upload=False)
 
         ui.load(
             sync_labels_fn,
-            inputs=flattened_imgs + flattened_dds,
-            outputs=flattened_imgs + flattened_dds
-            + [
-                cr_match_img,
-                ql_dict["match_md"],
-                ql_note_row,
-                ql_labeling_row,
-                cr_note_row,
-                cr_img_row,
-                tc_info,
-            ],
+            inputs=flattened_dds + flattened_fmt_dds,
+            outputs=flattened_imgs + flattened_dds + other_lbl_related,
         )
 
     return ui

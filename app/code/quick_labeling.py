@@ -1,20 +1,25 @@
 import os
-from typing import Any
+from typing import Any, TYPE_CHECKING
 import gradio as gr
+
 from img import rescale_img
+from paths import absp
+
+if TYPE_CHECKING:
+    from classes.base import LabelId
 
 GradioUpdate = dict[str, Any]
 
 
-def next_info(surv_lbl, updated_data: list[int]) -> tuple[str | None, list[int], str]:
-    if not surv_lbl.done:
+def next_info(
+    labeler,
+    updated_data: list["LabelId"],
+) -> tuple[str | None, list["LabelId"], str]:
+    if not labeler.done:
         return (
-            surv_lbl.get_crops("jpg"),
+            labeler.get_crops("jpg"),
             updated_data,
-            os.path.join(
-                os.environ["DBDIE_MAIN_FD"],
-                f"data/img/cropped/{surv_lbl.filename(0)}",  # TODO: Change
-            ),
+            absp(f"data/img/cropped/{labeler.filename(0)}"),  # TODO: Change
         )
     else:
         print("LABELING DONE")
@@ -38,19 +43,36 @@ def update_images(crops: list[str | None], match_img_path: str) -> list[GradioUp
     ]
 
 
-def update_match_md(surv_lbl) -> list[GradioUpdate]:
-    curr = surv_lbl.current.iloc[0]
-    text = (
-        "<br>".join(
-            [
-                f"🖼️ ({curr['m_id']}) {curr['m_filename']}",
-                f"📅 {curr['m_match_date']}",
-                f"🆚 {curr['m_dbd_version']}",
-            ]  # TODO: Change
+def update_dropdowns(
+    labeler_orch,
+    updated_data: list["LabelId"],
+):
+    if labeler_orch.labeler_has_changed:
+        labeler_orch.labeler_has_changed = False
+        return [
+            gr.update(choices=labeler_orch.options, value=label)
+            for label in updated_data
+        ]
+    else:
+        return [gr.update(value=label) for label in updated_data]
+
+
+def update_match_markdown(labeler) -> list[GradioUpdate]:
+    if labeler.done:
+        text = ""
+    else:
+        curr = labeler.current.iloc[0]
+        text = (
+            "<br>".join(
+                [
+                    f"🖼️ ({curr['m_id']}) {curr['m_filename']}",
+                    f"📅 {curr['m_match_date']}",
+                    f"🆚 {curr['m_dbd_version']}",
+                ]  # TODO: Change
+            )
+            if not labeler.done
+            else ""
         )
-        if not surv_lbl.done
-        else ""
-    )
     return [gr.update(value=text)]
 
 

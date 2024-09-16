@@ -3,12 +3,16 @@
 from typing import TYPE_CHECKING, Callable
 
 import gradio as gr
+
 from api import get_tc_info, upload_labels
 from img import rescale_img
-from code.quick_labeling import update_images, update_match_md, toggle_rows_visibility, next_info
+from code.quick_labeling import (
+    next_info, toggle_rows_visibility,
+    update_dropdowns, update_images, update_match_markdown
+)
 
 if TYPE_CHECKING:
-    from classes.labeler import SurvLabeler
+    from classes.labeler import Labeler, LabelerSelector
 
 Options = list[tuple[str, int]]
 LabeledImages = list[tuple[str, int]]
@@ -73,7 +77,7 @@ def empty_fn(*input_data):
     return [gr.update(value=label) for label in updated_data]
 
 
-def make_label_fn(surv_lbl: "SurvLabeler", upload: bool, go_back: bool = False):
+def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = False):
     """Make the main label (button) function.
 
     upload: Toggles the upload and the changing of the labels for the following ones.
@@ -87,28 +91,46 @@ def make_label_fn(surv_lbl: "SurvLabeler", upload: bool, go_back: bool = False):
         
         Flattened input: First 16 images, and then 16 dropdowns.
         """
-        assert len(input_data) == 32
+        # Select current labeler
+        labeler = lbl_sel.labeler
+        assert len(input_data) == labeler.total_cells + 2
+
+        mt_selected = input_data[labeler.total_cells][2:].lower()
+        ks_selected = input_data[labeler.total_cells + 1][2:].lower()
+        ks_selected = "surv" if ks_selected == "survivor" else ks_selected
+
+        if lbl_sel.mt != mt_selected:
+            print("MODEL TYPE CHANGED")
+            lbl_sel.mt = mt_selected
+        elif lbl_sel.ks != ks_selected:
+            print("KILLER SURV CHANGED")
+            lbl_sel.is_for_killer = ks_selected == "killer"
+
+        # Select current labeler
+        labeler = lbl_sel.labeler
 
         if upload:
-            upload_labels(surv_lbl, list(input_data[16:]))
-            updated_data = surv_lbl.next()
+            upload_labels(labeler, list(input_data[:16]))
+            updated_data = labeler.next()
         elif go_back:
-            updated_data = surv_lbl.next(go_back=True)
+            updated_data = labeler.next(go_back=True)
         else:
-            updated_data = surv_lbl.current["label_id"].to_list()
+            updated_data = labeler.current["label_id"].to_list()
 
-        crops, updated_data, match_img_path = next_info(surv_lbl, updated_data)
+        crops, updated_data, match_img_path = next_info(labeler, updated_data)
 
-        print(match_img_path)
+        print("match_img_path:", match_img_path)
         with open("app/configs/tc_info.md") as f:
             tc_info = f.read()
 
+        print(30 * "-")
+
         return (
-            update_images(crops, match_img_path)  # images
-            + [gr.update(value=label) for label in updated_data]  # dropdowns
-            + [gr.update(value=match_img_path)]  # match image
-            + update_match_md(surv_lbl)  # match markdown
-            + toggle_rows_visibility(surv_lbl.done)
+            update_images(crops, match_img_path)
+            + update_dropdowns(lbl_sel, updated_data)
+            + [gr.update(value=match_img_path)]
+            + update_match_markdown(labeler)
+            + toggle_rows_visibility(labeler.done)
             + [
                 gr.update(value=tc_info.format(**get_tc_info()))  # TODO: change to a cached counter
             ]  # training corpus info
@@ -121,12 +143,12 @@ def make_label_fn(surv_lbl: "SurvLabeler", upload: bool, go_back: bool = False):
 
 
 def ql_button_logic(
-    surv_labeler: "SurvLabeler",
+    labeler: "Labeler",
 ) -> dict[str, gr.Button | gr.Markdown]:
     """Create quick_labeling buttons."""
     with gr.Row():
         with gr.Column(scale=1, min_width=200):
-            filename = surv_labeler.filename
+            filename = labeler.filename
             match_md = gr.Markdown(f"Match: {filename if filename is not None else ''}")
         with gr.Column(scale=17):
             with gr.Row():

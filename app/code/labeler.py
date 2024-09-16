@@ -1,28 +1,12 @@
-"""SurvLabeler class extra code."""
+"""Labeler class extra code."""
 
 import pandas as pd
 from typing import TYPE_CHECKING
-from options.MODEL_TYPES import ALL as ALL_MT
 
 if TYPE_CHECKING:
     from pandas import DataFrame
-    from classes.base import FullModelType
 
 PERK_COLS = ["perk_0", "perk_1", "perk_2", "perk_3"]
-
-# * Instantiation
-
-
-def process_fmt(fmt: "FullModelType") -> tuple[str, str, bool]:
-    mt_and_ks = fmt.split("__")
-    assert mt_and_ks[0] in ALL_MT
-    assert mt_and_ks[1] in {"killer", "surv"}
-    return (
-        fmt,
-        mt_and_ks[0],
-        mt_and_ks[1] == "killer",
-    )
-
 
 # * Current pointer management
 
@@ -55,7 +39,7 @@ def update_current(lbl, update_match: bool) -> pd.DataFrame:
         c_matches = c_matches.reset_index(drop=False)
         c_matches = c_matches.rename({c: f"m_{c}" for c in m_cols_ext}, axis=1)
     else:
-        c_matches = lbl.current[m_cols_ext]
+        c_matches = lbl.current[[f"m_{c}" for c in m_cols_ext]]
 
     return pd.concat(
         (

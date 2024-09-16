@@ -1,4 +1,4 @@
-"""SurvLabeler class code."""
+"""Labeler class code."""
 
 from __future__ import annotations
 
@@ -7,12 +7,13 @@ import numpy as np
 import pandas as pd
 from typing import TYPE_CHECKING
 
-from code.labeler import process_fmt, update_current
+from code.labeler import update_current
 from options.COLUMNS import MT_TO_COLS
+from options.MODEL_TYPES import process_fmt
 from paths import absp, CROPS_RP
 
 if TYPE_CHECKING:
-    from classes.base import FullModelType, LabelId, Path, PseudoPlayerId
+    from classes.base import FullModelType, KillerSurvStr, LabelId, ModelType, Path, PseudoPlayerId
 
 TOTAL_CELLS = 16
 
@@ -36,42 +37,60 @@ class Labeler:
         cols = self.labels.columns.to_list()
         self.column_ixs = [cols.index(c) for c in self.columns]
 
-        assert TOTAL_CELLS % len(self.columns) == 0
-        self.n_players = int(TOTAL_CELLS / len(self.columns))
+        self.total_cells = TOTAL_CELLS
+        assert self.total_cells % len(self.columns) == 0
+        self.n_players = int(self.total_cells / len(self.columns))
         self.n_items = len(self.columns)
 
         # TODO: Make it fmt-dependent
-        self.pending = np.nonzero(self.labels[f"{self.mt}_mckd"])[0]  # ! CHANGE
-        print(self.pending)
+        mask = self.labels.index.get_level_values(1) == 4
+        if not self.is_for_killer:
+            mask = np.logical_not(mask)
+        mask = np.logical_and(mask, ~self.labels[f"{self.mt}_mckd"])
+        self.pending = np.nonzero(mask)[0]
         self._ptr_min = - self.n_players
         self._ptr_max = 0
 
-        self.done = False
+        # Take into account the possibility of an empty initial pending list
+        self.done = self.pending.size == 0
 
         self.current = pd.DataFrame(
             {
-                "m_id": [-1 for _ in range(TOTAL_CELLS)],
-                "m_filename": ["" for _ in range(TOTAL_CELLS)],
-                "m_match_date": ["" for _ in range(TOTAL_CELLS)],
-                "m_dbd_version": ["" for _ in range(TOTAL_CELLS)],
-                "label_id": [-1 for _ in range(TOTAL_CELLS)],
-                "player_id": [-1 for _ in range(TOTAL_CELLS)],
-                "item_id": [(i % self.n_items) for i in range(TOTAL_CELLS)],
+                "m_id": [-1 for _ in range(self.total_cells)],
+                "m_filename": ["" for _ in range(self.total_cells)],
+                "m_match_date": ["" for _ in range(self.total_cells)],
+                "m_dbd_version": ["" for _ in range(self.total_cells)],
+                "label_id": [-1 for _ in range(self.total_cells)],
+                "player_id": [-1 for _ in range(self.total_cells)],
+                "item_id": [(i % self.n_items) for i in range(self.total_cells)],
             }
         )
 
-    def _wrap(self, values: list) -> np.ndarray:
+    @property
+    def ks(self) -> "KillerSurvStr":
+        return "killer" if self.is_for_killer else "surv"
+
+    def wrap(self, values: list) -> np.ndarray:
         return np.array(values).reshape(self.n_players, self.n_items)
 
     def filename(self, ix: int) -> str | None:
         return self.current["m_filename"].iat[ix] if not self.done else None
+
+    def get_key(self, id: int) -> tuple[int, int]:
+        """Get primary key of current labels."""
+        assert id < self.n_players
+        ix = id * self.n_items  # min_ix is enough
+        return (
+            int(self.current["m_id"].iat[ix]),
+            int(self.current["player_id"].iat[ix]),
+        )
 
     # * Images
 
     def get_limgs(self, img_ext: str) -> dict["PseudoPlayerId", list[tuple["Path", "LabelId"]]]:
         """Get labeled images of current selection as a dict."""
         if self.done:
-            return [(None, -1) for _ in range(TOTAL_CELLS)]
+            return [(None, -1) for _ in range(self.total_cells)]
 
         return [
             (
@@ -110,14 +129,14 @@ class Labeler:
         if not go_back and (self._ptr_min >= self.pending.size):
             return self.current["label_id"].to_list()
         elif go_back and (self._ptr_min <= 0):
-            raise ValueError("SurvLabeler pointer out of bounds.")
+            raise ValueError("Labeler pointer out of bounds.")
 
         # Change pointers
         self._ptr_min += -self.n_players if go_back else self.n_players
         self._ptr_max += -self.n_players if go_back else self.n_players
 
         # All matches have been labeled
-        if self._ptr_min >= self.pending.size:
+        if (self._ptr_min >= self.pending.size) or (self._ptr_max > self.pending.size):  # TODO: For now we don't allow partial uploads
             self.done = True
             self.current = pd.DataFrame(columns=self.current.columns)
         else:
@@ -131,9 +150,87 @@ class Labeler:
 
     def update_current(self, new_labels: list["LabelId"]) -> None:
         """Update current values."""
-        assert len(new_labels) == TOTAL_CELLS
+        assert len(new_labels) == self.total_cells
 
         ptrs = self.pending[self._ptr_min:self._ptr_max]
-        self.labels.iloc[ptrs, self.column_ixs] = self._wrap(new_labels)
+        self.labels.iloc[ptrs, self.column_ixs] = self.wrap(new_labels)
 
         self.current = update_current(self, update_match=False)
+
+
+class LabelerSelector:
+    """Labeler selector. Also harbors the current dropdown dictionary."""
+    def __init__(self, labelers: dict["FullModelType", Labeler]) -> None:
+        self.labelers = labelers
+        self._fmt: "FullModelType" = "perks__surv"
+        self._mt: "ModelType" = "perks"
+        self._is_for_killer: bool = False
+
+        for lbl in self.labelers.values():
+            lbl.next()
+
+        self.labeler_has_changed = False
+        self.load()
+        self.labeler_has_changed = False
+
+    @property
+    def ks(self) -> "KillerSurvStr":
+        """'killer/surv' string."""
+        return "killer" if self._is_for_killer else "surv"
+
+    @ks.setter
+    def ks(self, _) -> None:
+        raise PermissionError("'ks' cannot be set manually. Use 'is_for_killer' bool instead.")
+
+    @property
+    def fmt(self) -> str:
+        """Full model type."""
+        return self._fmt
+
+    @fmt.setter
+    def fmt(self, fmt: "FullModelType") -> None:
+        self._fmt, self._mt, self._is_for_killer = process_fmt(fmt)
+        self.load()
+
+    @property
+    def mt(self) -> str:
+        """Model type."""
+        return self._mt
+
+    @mt.setter
+    def mt(self, mt: "ModelType") -> None:
+        self.fmt = f"{mt}__{self.ks}"
+
+    @property
+    def is_for_killer(self) -> bool:
+        return self._is_for_killer
+
+    @is_for_killer.setter
+    def is_for_killer(self, ifk: bool) -> None:
+        self.fmt = f"{self._mt}__{'killer' if ifk else 'surv'}"
+
+    @property
+    def labeler(self) -> Labeler:
+        """Current labeler."""
+        return self.labelers[self._fmt]
+
+    def load(self) -> None:
+        """Load current predictables from the cache."""
+        assert not self.labeler_has_changed
+        self.labeler_has_changed = True
+
+        path = f"app/cache/predictables/{self.fmt}.csv"
+        try:
+            options = pd.read_csv(path, usecols=["emoji", "name", "id"])
+            options = options.apply(
+                lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
+                axis=1,
+            )
+        except (KeyError, ValueError):
+            options = pd.read_csv(path, usecols=["name", "id"])
+            options = options.apply(
+                lambda row: (f"{row['name']}", row["id"]),
+                axis=1,
+            )
+
+        self.options: list[tuple[str, "LabelId"]] = options.to_list()
