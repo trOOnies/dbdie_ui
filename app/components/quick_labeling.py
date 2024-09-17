@@ -43,7 +43,7 @@ def images_box(options: Options, w: int) -> ImageBox:
                         i: gr.Image(
                             rescale_img(vs[0], w),
                             interactive=False,
-                            height="11em",
+                            height="22em",
                             container=False,
                         )
                         for i, vs in enumerate(limgs)

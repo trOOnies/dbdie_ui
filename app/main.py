@@ -2,8 +2,9 @@
 
 from dotenv import load_dotenv
 
-from api import clean_perks, cache_function
+from api import cache_function
 from classes.labeler import Labeler, LabelerSelector
+from data.clean import make_clean_function
 from data.extract import extract_from_api
 from data.load import load_from_files
 from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
@@ -18,7 +19,12 @@ def main() -> None:
 
     for mt in ALL_MT_MULT:
         for ifk in [True, False]:
-            cache_function(mt, ifk, clean_perks, local_fallback=False)  # TODO: Clean functions for each MT
+            cache_function(
+                mt,
+                ifk,
+                make_clean_function(mt, ifk),
+                local_fallback=False,
+            )
 
     extract_from_api()
     matches, labels = load_from_files()

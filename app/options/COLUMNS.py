@@ -1,13 +1,13 @@
 from options import MODEL_TYPES
 
 CHARACTER = ["character"]
-PERKS = ["perk_0", "perk_1", "perk_2", "perk_3"]
-ITEM = ["item"]
-ADDONS = ["addon_0", "addon_1"]
-OFFERING = ["offering"]
-STATUS = ["status"]
-POINTS = ["points"]
-PRESTIGE = ["prestige"]
+PERKS     = ["perk_0", "perk_1", "perk_2", "perk_3"]
+ITEM      = ["item"]
+ADDONS    = ["addon_0", "addon_1"]
+OFFERING  = ["offering"]
+STATUS    = ["status"]
+POINTS    = ["points"]
+PRESTIGE  = ["prestige"]
 
 ALL = [
     CHARACTER,

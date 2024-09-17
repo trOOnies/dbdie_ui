@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 
 from code.labeler import update_current
 from options.COLUMNS import MT_TO_COLS
-from options.MODEL_TYPES import process_fmt
+from options.MODEL_TYPES import process_fmt, WITH_TYPES
+from options.NULL_COLS import BY_MODEL_TYPE
 from paths import absp, CROPS_RP
 
 if TYPE_CHECKING:
@@ -220,17 +221,45 @@ class LabelerSelector:
         self.labeler_has_changed = True
 
         path = f"app/cache/predictables/{self.fmt}.csv"
-        try:
-            options = pd.read_csv(path, usecols=["emoji", "name", "id"])
+
+        if self.mt in WITH_TYPES:
+            options = pd.read_csv(path, usecols=["name", "id", "type_id"])
+
+            mt_wrong_null_col = BY_MODEL_TYPE[self.mt][1 - int(self.is_for_killer)]
+            options = options[options["name"] != mt_wrong_null_col]
+
+            path_types = f"app/cache/predictables/{self.mt}_types.csv"
+            options_types = pd.read_csv(path_types, usecols=["id", "emoji", "is_for_killer"])
+            options_types.columns = ["type_id", "emoji", "is_for_killer"]
+
+            options = pd.merge(options, options_types, how="left", on="type_id")
+
+            options = options[
+                options["is_for_killer"].isnull() |
+                (options["is_for_killer"] == self.is_for_killer)
+            ]
+            options = options.drop("is_for_killer", axis=1)
+
+            options["emoji"] = options["emoji"].fillna("❓")
+            options = options.sort_values(["type_id", "name"])
+            options = options.drop("type_id", axis=1)
+
             options = options.apply(
                 lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
                 axis=1,
             )
-        except (KeyError, ValueError):
-            options = pd.read_csv(path, usecols=["name", "id"])
-            options = options.apply(
-                lambda row: (f"{row['name']}", row["id"]),
-                axis=1,
-            )
+        else:
+            try:
+                options = pd.read_csv(path, usecols=["emoji", "name", "id"])
+                options = options.apply(
+                    lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
+                    axis=1,
+                )
+            except (KeyError, ValueError):
+                options = pd.read_csv(path, usecols=["name", "id"])
+                options = options.apply(
+                    lambda row: (f"{row['name']}", row["id"]),
+                    axis=1,
+                )
 
         self.options: list[tuple[str, "LabelId"]] = options.to_list()

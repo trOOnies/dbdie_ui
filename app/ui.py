@@ -54,7 +54,7 @@ def create_ui(
 
             with gr.Row(visible=not labeler.done) as ql_labeling_row:
                 with gr.Column():
-                    PERK_W = 120
+                    PERK_W = 220
                     perks_box = images_box(labeler_orch.options, PERK_W)
                     limgs = labeler.get_limgs("jpg")
                     perks_objs = {
