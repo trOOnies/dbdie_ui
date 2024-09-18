@@ -4,12 +4,17 @@ from typing import TYPE_CHECKING, Callable
 
 import gradio as gr
 
-from api import get_tc_info, upload_labels
+from api import upload_labels
 from img import rescale_img
 from code.quick_labeling import (
-    next_info, toggle_rows_visibility,
-    update_dropdowns, update_images, update_match_markdown
+    next_info,
+    process_tc_info,
+    toggle_rows_visibility,
+    update_dropdowns,
+    update_images,
+    update_match_markdown,
 )
+from options import PLAYER_TYPE
 
 if TYPE_CHECKING:
     from classes.labeler import Labeler, LabelerSelector
@@ -96,17 +101,17 @@ def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = Fals
         assert len(input_data) == labeler.total_cells + 2
 
         mt_selected = input_data[labeler.total_cells][2:].lower()
-        ks_selected = input_data[labeler.total_cells + 1][2:].lower()
-        ks_selected = "surv" if ks_selected == "survivor" else ks_selected
+        ks_selected = input_data[labeler.total_cells + 1][2:]
+        ks_selected = PLAYER_TYPE.SURV if ks_selected == "Survivor" else PLAYER_TYPE.KILLER
 
         if lbl_sel.mt != mt_selected:
             print("MODEL TYPE CHANGED")
             lbl_sel.mt = mt_selected
         elif lbl_sel.ks != ks_selected:
             print("KILLER SURV CHANGED")
-            lbl_sel.is_for_killer = ks_selected == "killer"
+            lbl_sel.ifk = ks_selected == PLAYER_TYPE.KILLER
 
-        # Select current labeler
+        # Select current labeler again
         labeler = lbl_sel.labeler
 
         if upload:
@@ -120,9 +125,6 @@ def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = Fals
         crops, updated_data, match_img_path = next_info(labeler, updated_data)
 
         print("match_img_path:", match_img_path)
-        with open("app/configs/tc_info.md") as f:
-            tc_info = f.read()
-
         print(30 * "-")
 
         return (
@@ -131,9 +133,7 @@ def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = Fals
             + [gr.update(value=match_img_path)]
             + update_match_markdown(labeler)
             + toggle_rows_visibility(labeler.done)
-            + [
-                gr.update(value=tc_info.format(**get_tc_info()))  # TODO: change to a cached counter
-            ]  # training corpus info
+            + [gr.update(value=process_tc_info(lbl_sel))]  # training corpus info
         )
 
     return label_fn

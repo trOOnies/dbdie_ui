@@ -1,4 +1,4 @@
-## Perks
+## {predictable}
 
 |              | ✅ Checked | ⏳ Pending | Total |
 |--------------|------------|------------|--------|

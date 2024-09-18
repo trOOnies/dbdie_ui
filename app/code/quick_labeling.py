@@ -1,9 +1,11 @@
-import os
-from typing import Any, TYPE_CHECKING
+"""Extra code for quick_labeling component."""
+
 import gradio as gr
+from typing import Any, TYPE_CHECKING
 
 from img import rescale_img
 from paths import absp
+from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT
 
 if TYPE_CHECKING:
     from classes.base import LabelId
@@ -83,3 +85,26 @@ def toggle_rows_visibility(done: bool) -> list[GradioUpdate]:
         gr.update(visible=done),  # current match note row
         gr.update(visible=not done),  # current match row
     ]
+
+
+def process_tc_info(labeler_selector) -> str:
+    """Process training corpus info.
+    Return formatted text for the training corpus component.
+    """
+    with open("app/configs/tc_info.md") as f:
+        tc_info_mt = f.read()
+
+    tc_info = {
+        mt: tc_info_mt.replace("{predictable}", mt.capitalize())
+        for mt in ALL_MT
+    }
+    del tc_info_mt
+
+    updated_tc_info = labeler_selector.get_tc_info()
+    tc_info = "\n".join(
+        [
+            tci_mt.format(**updated_tc_info[mt])
+            for mt, tci_mt in tc_info.items()
+        ]
+    )
+    return tc_info

@@ -6,17 +6,94 @@ import os
 import numpy as np
 import pandas as pd
 from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
 
-from code.labeler import update_current
-from options.COLUMNS import MT_TO_COLS
+from code.labeler import (
+    init_cols,
+    init_dims,
+    init_current,
+    init_pending,
+    options_with_types,
+    options_wo_types,
+    update_current,
+)
 from options.MODEL_TYPES import process_fmt, WITH_TYPES
-from options.NULL_COLS import BY_MODEL_TYPE
+from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
+from options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
+from options.PLAYER_TYPE import ifk_to_pt
 from paths import absp, CROPS_RP
 
 if TYPE_CHECKING:
-    from classes.base import FullModelType, KillerSurvStr, LabelId, ModelType, Path, PseudoPlayerId
+    from classes.base import (
+        Filename,
+        FullModelType,
+        PlayerType,
+        LabelId,
+        MatchId,
+        ModelType,
+        Path,
+        PlayerId,
+    )
 
-TOTAL_CELLS = 16
+
+@dataclass
+class LabelsCounter:
+    """Counter for labeling status of labels.
+    'total' is 'completed' plus 'pending'.
+    """
+
+    completed     : int = field(repr=True)
+    pending       : int = field(repr=True)
+    n_players     : int = field(repr=False)
+    n_items       : int = field(repr=False)
+    total         : int = field(repr=True, init=False)
+    ptr_min       : int = field(repr=False, init=False)  # labels-based
+    ptr_max       : int = field(repr=False, init=False)  # labels-based
+    ptr_min_reach : int = field(repr=False, init=False)  # labels-based
+    total_cells   : int = field(repr=False, init=False)
+
+    def __post_init__(self):
+        assert self.completed >= 0
+        assert self.pending >= 0
+        assert self.n_players > 0
+        assert self.n_items > 0
+
+        self.total = self.completed + self.pending
+        self.ptr_min = - self.n_players
+        self.ptr_max = 0
+        self.ptr_min_reach = - self.n_players
+        self.total_cells = self.n_players * self.n_items
+
+    @property
+    def done(self) -> bool:
+        # TODO: For now we don't allow partial uploads
+        return self.pending < self.total_cells
+
+    def _get_steps(self, go_back: bool) -> tuple[int, int]:
+        row_step = - self.n_players if go_back else self.n_players
+        return row_step, row_step * self.n_items
+
+    def update(self, go_back: bool) -> None:
+        """Update completed labels count."""
+        row_step, lbl_step = self._get_steps(go_back)
+
+        # Labels row pointers are always updated
+        self.ptr_min += row_step
+        self.ptr_max += row_step
+
+        # Label counts are only updated when the info was updated for the first time
+        if not go_back:
+            new_reach = self.ptr_min > self.ptr_min_reach
+
+            if new_reach:
+                self.ptr_min_reach = self.ptr_min
+                self.completed = min(self.completed + lbl_step, self.total)
+                self.pending = self.total - self.completed
+
+    def to_tc_info() -> dict:
+        """To training corpus information format."""
+        counts = {}
+        return counts
 
 
 class Labeler:
@@ -31,53 +108,54 @@ class Labeler:
         self.matches = matches  # id must be the index
         self.labels = labels  # idem: (match_id, player_id)
 
-        self.fmt, self.mt, self.is_for_killer = process_fmt(fmt)
+        self.fmt, self.mt, self.ifk = process_fmt(fmt)
         self.folder_path = absp(f"{CROPS_RP}/{fmt}")
 
-        self.columns = MT_TO_COLS[self.mt]
-        cols = self.labels.columns.to_list()
-        self.column_ixs = [cols.index(c) for c in self.columns]
+        self.columns, self.column_ixs = init_cols(self.mt, self.labels)
 
-        self.total_cells = TOTAL_CELLS
-        assert self.total_cells % len(self.columns) == 0
-        self.n_players = int(self.total_cells / len(self.columns))
-        self.n_items = len(self.columns)
+        total_cells, n_players, n_items = init_dims(self.columns)
+        self.current = init_current(total_cells, n_items)
 
-        # TODO: Make it fmt-dependent
-        mask = self.labels.index.get_level_values(1) == 4
-        if not self.is_for_killer:
-            mask = np.logical_not(mask)
-        mask = np.logical_and(mask, ~self.labels[f"{self.mt}_mckd"])
-        self.pending = np.nonzero(mask)[0]
-        self._ptr_min = - self.n_players
-        self._ptr_max = 0
+        # Pending labels (rows) array and its current pointers
+        self.pending, total = init_pending(self.labels, self.mt, self.ifk)
 
-        # Take into account the possibility of an empty initial pending list
-        self.done = self.pending.size == 0
-
-        self.current = pd.DataFrame(
-            {
-                "m_id": [-1 for _ in range(self.total_cells)],
-                "m_filename": ["" for _ in range(self.total_cells)],
-                "m_match_date": ["" for _ in range(self.total_cells)],
-                "m_dbd_version": ["" for _ in range(self.total_cells)],
-                "label_id": [-1 for _ in range(self.total_cells)],
-                "player_id": [-1 for _ in range(self.total_cells)],
-                "item_id": [(i % self.n_items) for i in range(self.total_cells)],
-            }
+        total_labels = total * n_items
+        pending_labels = self.pending.size * n_items
+        self.counts = LabelsCounter(
+            completed=total_labels - pending_labels,
+            pending=pending_labels,
+            n_players=n_players,
+            n_items=n_items,
         )
 
     @property
-    def ks(self) -> "KillerSurvStr":
-        return "killer" if self.is_for_killer else "surv"
+    def n_players(self) -> int:
+        return self.counts.n_players
+
+    @property
+    def n_items(self) -> int:
+        return self.counts.n_items
+
+    @property
+    def total_cells(self) -> int:
+        return self.counts.total_cells
+
+    @property
+    def done(self) -> bool:
+        return self.counts.done
+
+    @property
+    def ks(self) -> "PlayerType":
+        return ifk_to_pt(self.ifk)
 
     def wrap(self, values: list) -> np.ndarray:
+        """Wrap values as a (n_players, n_items) matrix."""
         return np.array(values).reshape(self.n_players, self.n_items)
 
-    def filename(self, ix: int) -> str | None:
+    def filename(self, ix: int) -> "Filename" | None:
         return self.current["m_filename"].iat[ix] if not self.done else None
 
-    def get_key(self, id: int) -> tuple[int, int]:
+    def get_key(self, id: int) -> tuple["MatchId", "PlayerId"]:
         """Get primary key of current labels."""
         assert id < self.n_players
         ix = id * self.n_items  # min_ix is enough
@@ -88,7 +166,10 @@ class Labeler:
 
     # * Images
 
-    def get_limgs(self, img_ext: str) -> dict["PseudoPlayerId", list[tuple["Path", "LabelId"]]]:
+    def get_limgs(
+        self,
+        img_ext: str,
+    ) -> list[tuple["Path", "LabelId"]]:
         """Get labeled images of current selection as a dict."""
         if self.done:
             return [(None, -1) for _ in range(self.total_cells)]
@@ -110,10 +191,13 @@ class Labeler:
             )
         ]
 
-    def get_crops(self, img_ext: str) -> list[str]:
+    def get_crops(self, img_ext: str) -> list["Path"]:
         """Get labeled images of current selection as a flattened list."""
         return [
-            os.path.join(self.folder_path, f"{self.filename(i)[:-4]}_{pl}_{it}.{img_ext}")
+            os.path.join(
+                self.folder_path,
+                f"{self.filename(i)[:-4]}_{pl}_{it}.{img_ext}",
+            )
             for i, (pl, it) in enumerate(
                 zip(
                     self.current["player_id"].values,
@@ -127,18 +211,16 @@ class Labeler:
     def next(self, go_back: bool = False) -> list["LabelId"]:
         """Proceed to the next match & labels."""
         # Prevent updating the pointer beyond completion
-        if not go_back and (self._ptr_min >= self.pending.size):
+        if not go_back and (self.counts.ptr_min >= self.pending.size):
             return self.current["label_id"].to_list()
-        elif go_back and (self._ptr_min <= 0):
+        elif go_back and (self.counts.ptr_min <= 0):
             raise ValueError("Labeler pointer out of bounds.")
 
         # Change pointers
-        self._ptr_min += -self.n_players if go_back else self.n_players
-        self._ptr_max += -self.n_players if go_back else self.n_players
+        self.counts.update(go_back)
 
-        # All matches have been labeled
-        if (self._ptr_min >= self.pending.size) or (self._ptr_max > self.pending.size):  # TODO: For now we don't allow partial uploads
-            self.done = True
+        # Check if all matches have been labeled
+        if self.done:
             self.current = pd.DataFrame(columns=self.current.columns)
         else:
             self.current = update_current(self, update_match=True)
@@ -153,7 +235,7 @@ class Labeler:
         """Update current values."""
         assert len(new_labels) == self.total_cells
 
-        ptrs = self.pending[self._ptr_min:self._ptr_max]
+        ptrs = self.pending[self.counts.ptr_min:self.counts.ptr_max]
         self.labels.iloc[ptrs, self.column_ixs] = self.wrap(new_labels)
 
         self.current = update_current(self, update_match=False)
@@ -165,50 +247,47 @@ class LabelerSelector:
         self.labelers = labelers
         self._fmt: "FullModelType" = "perks__surv"
         self._mt: "ModelType" = "perks"
-        self._is_for_killer: bool = False
+        self._ifk: bool = False
 
         for lbl in self.labelers.values():
             lbl.next()
 
         self.labeler_has_changed = False
         self.load()
-        self.labeler_has_changed = False
+        self.labeler_has_changed = False  # Turn off after initial load
 
     @property
-    def ks(self) -> "KillerSurvStr":
-        """'killer/surv' string."""
-        return "killer" if self._is_for_killer else "surv"
+    def ks(self) -> "PlayerType":
+        return ifk_to_pt(self._ifk)
 
     @ks.setter
     def ks(self, _) -> None:
         raise PermissionError("'ks' cannot be set manually. Use 'is_for_killer' bool instead.")
 
     @property
-    def fmt(self) -> str:
-        """Full model type."""
+    def fmt(self) -> "FullModelType":
         return self._fmt
 
     @fmt.setter
-    def fmt(self, fmt: "FullModelType") -> None:
-        self._fmt, self._mt, self._is_for_killer = process_fmt(fmt)
+    def fmt(self, value: "FullModelType") -> None:
+        self._fmt, self._mt, self._ifk = process_fmt(value)
         self.load()
 
     @property
-    def mt(self) -> str:
-        """Model type."""
+    def mt(self) -> "ModelType":
         return self._mt
 
     @mt.setter
-    def mt(self, mt: "ModelType") -> None:
-        self.fmt = f"{mt}__{self.ks}"
+    def mt(self, value: "ModelType") -> None:
+        self.fmt = f"{value}__{self.ks}"
 
     @property
-    def is_for_killer(self) -> bool:
-        return self._is_for_killer
+    def ifk(self) -> bool:
+        return self._ifk
 
-    @is_for_killer.setter
-    def is_for_killer(self, ifk: bool) -> None:
-        self.fmt = f"{self._mt}__{'killer' if ifk else 'surv'}"
+    @ifk.setter
+    def ifk(self, value: bool) -> None:
+        self.fmt = f"{self._mt}__{'killer' if value else 'surv'}"
 
     @property
     def labeler(self) -> Labeler:
@@ -222,44 +301,47 @@ class LabelerSelector:
 
         path = f"app/cache/predictables/{self.fmt}.csv"
 
-        if self.mt in WITH_TYPES:
-            options = pd.read_csv(path, usecols=["name", "id", "type_id"])
-
-            mt_wrong_null_col = BY_MODEL_TYPE[self.mt][1 - int(self.is_for_killer)]
-            options = options[options["name"] != mt_wrong_null_col]
-
-            path_types = f"app/cache/predictables/{self.mt}_types.csv"
-            options_types = pd.read_csv(path_types, usecols=["id", "emoji", "is_for_killer"])
-            options_types.columns = ["type_id", "emoji", "is_for_killer"]
-
-            options = pd.merge(options, options_types, how="left", on="type_id")
-
-            options = options[
-                options["is_for_killer"].isnull() |
-                (options["is_for_killer"] == self.is_for_killer)
-            ]
-            options = options.drop("is_for_killer", axis=1)
-
-            options["emoji"] = options["emoji"].fillna("❓")
-            options = options.sort_values(["type_id", "name"])
-            options = options.drop("type_id", axis=1)
-
-            options = options.apply(
-                lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
-                axis=1,
-            )
-        else:
-            try:
-                options = pd.read_csv(path, usecols=["emoji", "name", "id"])
-                options = options.apply(
-                    lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
-                    axis=1,
-                )
-            except (KeyError, ValueError):
-                options = pd.read_csv(path, usecols=["name", "id"])
-                options = options.apply(
-                    lambda row: (f"{row['name']}", row["id"]),
-                    axis=1,
-                )
+        options = (
+            options_with_types(path, self.mt, self.ifk)
+            if self.mt in WITH_TYPES
+            else options_wo_types(path)
+        )
 
         self.options: list[tuple[str, "LabelId"]] = options.to_list()
+
+    def get_all_labels_counters(self) -> dict["ModelType", list[LabelsCounter]]:
+        """Get all labelers' LabelCounters.
+        For each model type, first goes the survivor and then the killer.
+        """
+        return {
+            mt: [
+                (
+                    self.labelers[f"{mt}__{pt}"].counts
+                    if f"{mt}__{pt}" in self.labelers 
+                    else LabelsCounter(completed=0, pending=0, n_players=0, n_items=0)
+                ) for pt in ALL_PLAYER_TYPES
+            ] for mt in ALL_MT_MULT
+        }
+
+    def get_tc_info(self) -> dict["ModelType", dict[str, int]]:
+        """Get training corpus info.
+
+        Nomenclature:
+        - k Killer, s Survivor
+        - p Pending, c Checked
+        - t Total
+        """
+        lcs = self.get_all_labels_counters()
+        return {
+            mt: {
+                "sc": mt_lcs[0].completed,
+                "sp": mt_lcs[0].pending,
+                "kc": mt_lcs[1].completed,
+                "kp": mt_lcs[1].pending,
+                "st": mt_lcs[0].completed + mt_lcs[0].pending,
+                "kt": mt_lcs[1].completed + mt_lcs[1].pending,
+                "tc": mt_lcs[0].completed + mt_lcs[1].completed,
+                "tp": mt_lcs[0].pending + mt_lcs[1].pending,
+            }
+            for mt, mt_lcs in lcs.items()
+        }

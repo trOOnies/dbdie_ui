@@ -6,9 +6,12 @@ PathToFolder = str
 RelPath = str
 Path = str
 
-# Labeling
-PseudoPlayerId = Literal[0, 1, 2, 3, 4]
-LabelId = int
-KillerSurvStr = Literal["killer", "surv"]
+# Model type
+PlayerType = Literal["killer", "surv"]
 ModelType = str
 FullModelType = str  # i.e. character__killer
+
+# Labeling
+MatchId = int
+PlayerId = Literal[0, 1, 2, 3, 4]
+LabelId = int

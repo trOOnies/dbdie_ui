@@ -8,6 +8,7 @@ from data.clean import make_clean_function
 from data.extract import extract_from_api
 from data.load import load_from_files
 from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
+from options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
 from ui import create_ui
 
 with open("app/styles.css") as f:
@@ -32,7 +33,7 @@ def main() -> None:
     labelers = {
         f"{mt}__{ks}": Labeler(matches, labels, fmt=f"{mt}__{ks}")
         for mt in ALL_MT_MULT
-        for ks in ["killer", "surv"]
+        for ks in ALL_PLAYER_TYPES
     }
     labeler_orch = LabelerSelector(labelers)
 
