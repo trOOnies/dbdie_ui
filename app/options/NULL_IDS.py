@@ -1,3 +1,12 @@
+"""Null names and ids for the mt-bound SQL columns."""
+
+from typing import TYPE_CHECKING
+
+from options import MODEL_TYPES
+
+if TYPE_CHECKING:
+    from classes.base import ModelType
+
 ADDONS_KILLER    = "NoKillerAddon"
 ADDONS_SURV      = "NoSurvAddon"
 CHARACTER_ALL    = "AllCharacters"
@@ -12,12 +21,12 @@ PERKS_SURV       = "NoSurvPerk"
 STATUS           = "NoStatus"
 
 BY_MODEL_TYPE = {
-    "addons"    : [ADDONS_SURV, ADDONS_KILLER],
-    "character" : [CHARACTER_SURV, CHARACTER_KILLER],
-    "item"      : [ITEM_SURV, ITEM_KILLER],
-    "offering"  : [OFFERING_SURV, OFFERING_KILLER],
-    "perks"     : [PERKS_SURV, PERKS_KILLER],
-    "status"    : [STATUS],
+    MODEL_TYPES.ADDONS    : [ADDONS_SURV, ADDONS_KILLER],
+    MODEL_TYPES.CHARACTER : [CHARACTER_SURV, CHARACTER_KILLER],
+    MODEL_TYPES.ITEM      : [ITEM_SURV, ITEM_KILLER],
+    MODEL_TYPES.OFFERING  : [OFFERING_SURV, OFFERING_KILLER],
+    MODEL_TYPES.PERKS     : [PERKS_SURV, PERKS_KILLER],
+    MODEL_TYPES.STATUS    : [STATUS],
 }
 ALL_KILLER = [
     ADDONS_KILLER,
@@ -46,3 +55,12 @@ ALL = [
     PERKS_SURV,
     STATUS,
 ]
+
+INT_IDS: dict["ModelType", list[int]] = {
+    MODEL_TYPES.ADDONS    : [1, 0],  # surv, killer
+    MODEL_TYPES.CHARACTER : [2, 1, 0],  # surv, killer, all
+    MODEL_TYPES.ITEM      : [1, 0],
+    MODEL_TYPES.OFFERING  : [1, 0],
+    MODEL_TYPES.PERKS     : [1, 0],
+    MODEL_TYPES.STATUS    : [0, 1],
+}

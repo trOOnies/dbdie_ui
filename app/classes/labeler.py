@@ -87,8 +87,11 @@ class LabelsCounter:
 
             if new_reach:
                 self.ptr_min_reach = self.ptr_min
-                self.completed = min(self.completed + lbl_step, self.total)
-                self.pending = self.total - self.completed
+
+                # Take into account initial step
+                if self.ptr_min_reach > 0:
+                    self.completed = min(self.completed + lbl_step, self.total)
+                    self.pending = self.total - self.completed
 
     def to_tc_info() -> dict:
         """To training corpus information format."""
@@ -114,13 +117,19 @@ class Labeler:
         self.columns, self.column_ixs = init_cols(self.mt, self.labels)
 
         total_cells, n_players, n_items = init_dims(self.columns)
-        self.current = init_current(total_cells, n_items)
+        self.current, self.null_id = init_current(
+            total_cells,
+            n_items,
+            self.mt,
+            self.ifk,
+        )
 
         # Pending labels (rows) array and its current pointers
         self.pending, total = init_pending(self.labels, self.mt, self.ifk)
 
         total_labels = total * n_items
         pending_labels = self.pending.size * n_items
+
         self.counts = LabelsCounter(
             completed=total_labels - pending_labels,
             pending=pending_labels,

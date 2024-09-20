@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import TYPE_CHECKING
 
-from options.NULL_COLS import BY_MODEL_TYPE as NULL_COLS_BY_MT
+from options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
 if TYPE_CHECKING:
     from classes.base import ModelType
 
@@ -11,7 +11,7 @@ def make_clean_function(model_type: "ModelType", is_for_killer: bool):
         """Clean raw item."""
         item = pd.DataFrame(item_json)
 
-        mask = item["name"].isin(NULL_COLS_BY_MT[model_type])
+        mask = item["name"].isin(NULL_IDS_BY_MT[model_type])
         item = pd.concat(
             (
                 item[mask],
