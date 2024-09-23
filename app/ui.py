@@ -1,7 +1,9 @@
 """UI function script."""
 
-import os
+from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT
+from dbdie_classes.options.MODEL_TYPE import EMOJIS as MT_EMOJIS
 import gradio as gr
+import os
 from typing import TYPE_CHECKING
 
 from components.inference import inference_fn
@@ -13,8 +15,6 @@ from components.quick_labeling import (
     ql_button_logic,
 )
 from constants import ROW_COLORS_CLASSES
-from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT
-from options.MODEL_TYPES import EMOJIS as MT_EMOJIS
 from paths import CROPPED_IMG_RP, absp
 
 if TYPE_CHECKING:

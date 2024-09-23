@@ -1,22 +1,53 @@
 """Extra code for quick_labeling component."""
 
+from dbdie_classes.options import PLAYER_TYPE
+from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT
 import gradio as gr
 from typing import Any, TYPE_CHECKING
 
+from api import upload_labels
 from img import rescale_img
 from paths import absp
-from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT
 
 if TYPE_CHECKING:
-    from classes.base import LabelId
+    from dbdie_classes.base import LabelId, Path
 
 GradioUpdate = dict[str, Any]
+
+
+def process_fmt(lbl_sel, input_data) -> None:
+    """Process new full model type."""
+    mt_selected = input_data[lbl_sel.labeler.total_cells][2:].lower()
+    ks_selected = input_data[lbl_sel.labeler.total_cells + 1][2:]
+    ks_selected = PLAYER_TYPE.SURV if ks_selected == "Survivor" else PLAYER_TYPE.KILLER
+
+    if lbl_sel.mt != mt_selected:
+        print("MODEL TYPE CHANGED")
+        lbl_sel.mt = mt_selected
+    elif lbl_sel.ks != ks_selected:
+        print("KILLER SURV CHANGED")
+        lbl_sel.ifk = ks_selected == PLAYER_TYPE.KILLER
+
+
+def update_data(
+    labeler,
+    input_data,
+    upload: bool,
+    go_back: bool,
+) -> list["LabelId"]:
+    if upload:
+        upload_labels(labeler, list(input_data[:16]))
+        return labeler.next()
+    elif go_back:
+        return labeler.next(go_back=True)
+    else:
+        return labeler.current["label_id"].to_list()
 
 
 def next_info(
     labeler,
     updated_data: list["LabelId"],
-) -> tuple[str | None, list["LabelId"], str]:
+) -> tuple[list["Path" | None], list["LabelId"], "Path" | None]:
     if not labeler.done:
         return (
             labeler.get_crops("jpg"),
@@ -32,7 +63,7 @@ def next_info(
         )
 
 
-def update_images(crops: list[str | None], match_img_path: str) -> list[GradioUpdate]:
+def update_images(crops: list["Path" | None], match_img_path: "Path") -> list[GradioUpdate]:
     return [
         gr.update(
             value=rescale_img(img, 120) if isinstance(img, str) else None,

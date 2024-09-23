@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from dbdie_classes.options.FMT import assert_mt_and_pt, extract_mt_pt_ifk, to_fmt
+from dbdie_classes.options.MODEL_TYPE import WITH_TYPES
+from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
+from dbdie_classes.options.PLAYER_TYPE import pt_to_ifk
+from dbdie_classes.options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
 import os
 import numpy as np
 import pandas as pd
@@ -17,16 +22,13 @@ from code.labeler import (
     options_wo_types,
     update_current,
 )
-from options.MODEL_TYPES import process_fmt, WITH_TYPES
-from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
-from options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
-from options.PLAYER_TYPE import ifk_to_pt
 from paths import absp, CROPS_RP
 
 if TYPE_CHECKING:
-    from classes.base import (
+    from dbdie_classes.base import (
         Filename,
         FullModelType,
+        IsForKiller,
         PlayerType,
         LabelId,
         MatchId,
@@ -111,7 +113,9 @@ class Labeler:
         self.matches = matches  # id must be the index
         self.labels = labels  # idem: (match_id, player_id)
 
-        self.fmt, self.mt, self.ifk = process_fmt(fmt)
+        self.mt, self.pt, self.ifk = extract_mt_pt_ifk(self.fmt)
+        assert_mt_and_pt(self.mt, self.pt)
+        self.fmt = fmt
         self.folder_path = absp(f"{CROPS_RP}/{fmt}")
 
         self.columns, self.column_ixs = init_cols(self.mt, self.labels)
@@ -152,10 +156,6 @@ class Labeler:
     @property
     def done(self) -> bool:
         return self.counts.done
-
-    @property
-    def ks(self) -> "PlayerType":
-        return ifk_to_pt(self.ifk)
 
     def wrap(self, values: list) -> np.ndarray:
         """Wrap values as a (n_players, n_items) matrix."""
@@ -256,7 +256,7 @@ class LabelerSelector:
         self.labelers = labelers
         self._fmt: "FullModelType" = "perks__surv"
         self._mt: "ModelType" = "perks"
-        self._ifk: bool = False
+        self._ifk: "IsForKiller" = False
 
         for lbl in self.labelers.values():
             lbl.next()
@@ -266,20 +266,14 @@ class LabelerSelector:
         self.labeler_has_changed = False  # Turn off after initial load
 
     @property
-    def ks(self) -> "PlayerType":
-        return ifk_to_pt(self._ifk)
-
-    @ks.setter
-    def ks(self, _) -> None:
-        raise PermissionError("'ks' cannot be set manually. Use 'is_for_killer' bool instead.")
-
-    @property
     def fmt(self) -> "FullModelType":
         return self._fmt
 
     @fmt.setter
     def fmt(self, value: "FullModelType") -> None:
-        self._fmt, self._mt, self._ifk = process_fmt(value)
+        self._mt, self._pt, self._ifk = extract_mt_pt_ifk(value)
+        assert_mt_and_pt(self._mt, self._pt)
+        self._fmt = value
         self.load()
 
     @property
@@ -288,15 +282,23 @@ class LabelerSelector:
 
     @mt.setter
     def mt(self, value: "ModelType") -> None:
-        self.fmt = f"{value}__{self.ks}"
+        self.fmt = to_fmt(value, self._ifk)
 
     @property
-    def ifk(self) -> bool:
+    def ifk(self) -> "IsForKiller":
         return self._ifk
 
     @ifk.setter
-    def ifk(self, value: bool) -> None:
-        self.fmt = f"{self._mt}__{'killer' if value else 'surv'}"
+    def ifk(self, value: "IsForKiller") -> None:
+        self.fmt = to_fmt(self._mt, value)
+
+    @property
+    def pt(self) -> "PlayerType":
+        return self._pt
+
+    @pt.setter
+    def pt(self, value: "PlayerType") -> None:
+        self.fmt = to_fmt(self._mt, pt_to_ifk(value))
 
     @property
     def labeler(self) -> Labeler:

@@ -29,7 +29,9 @@ venv: ## Create venv
 	fi;
 
 install: ## Install the dependencies and the core package
-	pip install -r requirements.txt
+	python3 -m pip install -r requirements.txt
+	python3 -m pip install -r requirements_test.txt
+	python3 -m pip install ../dbdie_classes
 
 core-install: ## Install the core package from a specific path
 	pip install $(core-path)

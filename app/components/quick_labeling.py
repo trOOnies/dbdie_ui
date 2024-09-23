@@ -1,43 +1,35 @@
 """Functions for quick_labeling component."""
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import gradio as gr
 
-from api import upload_labels
 from img import rescale_img
 from code.quick_labeling import (
     next_info,
+    process_fmt,
     process_tc_info,
     toggle_rows_visibility,
+    update_data,
     update_dropdowns,
     update_images,
     update_match_markdown,
 )
-from options import PLAYER_TYPE
 
 if TYPE_CHECKING:
+    from classes.gradio import (
+        DropdownDict, ImageBox, ImageDict, LabeledImages, Options
+    )
     from classes.labeler import Labeler, LabelerSelector
 
-Options = list[tuple[str, int]]
-LabeledImages = list[tuple[str, int]]
-LabelBox = Callable[[str, int], tuple[gr.Image, gr.Dropdown]]
 
-ImageDict = dict[int, gr.Image]
-DropdownDict = dict[int, gr.Dropdown]
-ImageBox = Callable[
-    [str, LabeledImages],
-    dict[str, ImageDict | DropdownDict],
-]
-
-
-def images_box(options: Options, w: int) -> ImageBox:
+def images_box(options: "Options", w: int) -> "ImageBox":
     """Create function that creates images in a Gradio Row."""
 
     def form_images(
         rcc: str,
-        limgs: LabeledImages,
-    ) -> dict[str, ImageDict | DropdownDict]:
+        limgs: "LabeledImages",
+    ) -> dict[str, "ImageDict" | "DropdownDict"]:
         """Create images in a Gradio Row."""
         with gr.Row(elem_classes=rcc):
             with gr.Column(scale=1, min_width=10, elem_classes="option-col"):
@@ -70,7 +62,7 @@ def images_box(options: Options, w: int) -> ImageBox:
 
 
 def flatten_objs(
-    objs: dict[int, dict[str, ImageDict | DropdownDict]],
+    objs: dict[int, dict[str, "ImageDict" | "DropdownDict"]],
     kind: str,
 ) -> list[gr.Image | gr.Dropdown]:
     return [o for row in objs.values() for o in row[kind].values()]
@@ -96,32 +88,14 @@ def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = Fals
         
         Flattened input: First 16 images, and then 16 dropdowns.
         """
-        # Select current labeler
-        labeler = lbl_sel.labeler
-        assert len(input_data) == labeler.total_cells + 2
+        assert len(input_data) == lbl_sel.labeler.total_cells + 2
 
-        mt_selected = input_data[labeler.total_cells][2:].lower()
-        ks_selected = input_data[labeler.total_cells + 1][2:]
-        ks_selected = PLAYER_TYPE.SURV if ks_selected == "Survivor" else PLAYER_TYPE.KILLER
+        process_fmt(lbl_sel, input_data)
 
-        if lbl_sel.mt != mt_selected:
-            print("MODEL TYPE CHANGED")
-            lbl_sel.mt = mt_selected
-        elif lbl_sel.ks != ks_selected:
-            print("KILLER SURV CHANGED")
-            lbl_sel.ifk = ks_selected == PLAYER_TYPE.KILLER
-
-        # Select current labeler again
+        # Select new current labeler
         labeler = lbl_sel.labeler
 
-        if upload:
-            upload_labels(labeler, list(input_data[:16]))
-            updated_data = labeler.next()
-        elif go_back:
-            updated_data = labeler.next(go_back=True)
-        else:
-            updated_data = labeler.current["label_id"].to_list()
-
+        updated_data = update_data(labeler, input_data, upload, go_back)
         crops, updated_data, match_img_path = next_info(labeler, updated_data)
 
         print("match_img_path:", match_img_path)

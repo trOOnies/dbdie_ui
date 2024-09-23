@@ -2,13 +2,15 @@
 
 import os
 
+from dbdie_classes.options.FMT import to_fmt
+from dbdie_classes.options.MODEL_TYPE import CHARACTER, TO_ID_NAMES, WITH_TYPES
 import requests
 from typing import TYPE_CHECKING
 
-from options.MODEL_TYPES import CHARACTER, MT_TO_SCHEMA_ATTR, WITH_TYPES
+from code.api import extract_player_info
 
 if TYPE_CHECKING:
-    from classes.base import LabelId, ModelType
+    from dbdie_classes.base import IsForKiller, LabelId, ModelType
     from classes.labeler import Labeler
 
 
@@ -37,7 +39,7 @@ def get_items(
     if is_type:
         path = f"app/cache/predictables/{mt}_types.csv"
     else:
-        path = f"app/cache/predictables/{mt}__{'killer' if is_for_killer else 'surv'}.csv"
+        path = f"app/cache/predictables/{to_fmt(mt, is_for_killer)}.csv"
 
     try:
         if is_type:
@@ -68,7 +70,7 @@ def get_items(
 
 def cache_function(
     mt: "ModelType",
-    is_for_killer: bool,
+    is_for_killer: "IsForKiller",
     clean_f,
     local_fallback: bool,
 ) -> None:
@@ -98,12 +100,10 @@ def upload_labels(labeler: "Labeler", labels: list["LabelId"]) -> None:
     labels_wrapped = labeler.wrap(labels)
 
     for player_ix in range(labeler.n_players):
-        match_id, player_id = labeler.get_key(player_ix)
-        player_labels = labels_wrapped[player_ix].tolist()
-        player_labels = (
-            int(player_labels[0])
-            if len(player_labels) == 1
-            else [int(v) for v in player_labels]
+        match_id, player_id, player_labels = extract_player_info(
+            labeler,
+            labels_wrapped,
+            player_ix,
         )
 
         resp = requests.put(
@@ -111,9 +111,10 @@ def upload_labels(labeler: "Labeler", labels: list["LabelId"]) -> None:
             params={"match_id": match_id, "strict": True},
             json={
                 "id": player_id,
-                MT_TO_SCHEMA_ATTR[labeler.mt]: player_labels,
+                TO_ID_NAMES[labeler.mt]: player_labels,
             },
         )
+
         if resp.status_code != 200:
             try:
                 msg = resp.json()

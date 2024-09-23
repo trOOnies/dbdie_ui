@@ -1,25 +1,22 @@
 """Labeler class extra code."""
 
+from dbdie_classes.options import MODEL_TYPE as MT
+from dbdie_classes.options import PLAYER_TYPE as PT
+from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
+from dbdie_classes.options.NULL_IDS import INT_IDS as NULL_INT_IDS
+from dbdie_classes.options.SQL_COLS import MT_TO_COLS
 import numpy as np
 import pandas as pd
 from typing import TYPE_CHECKING
 
-from options.COLUMNS import MT_TO_COLS
-from options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
-from options.NULL_IDS import INT_IDS as NULL_INT_IDS
-from options import PLAYER_TYPE
-
 if TYPE_CHECKING:
-    from pandas import DataFrame
-    from classes.base import ModelType, Path
-
-PERK_COLS = ["perk_0", "perk_1", "perk_2", "perk_3"]
+    from dbdie_classes.base import IsForKiller, ModelType, LabelId, Path, PlayerType
 
 TOTAL_CELLS = 16
 
 MOST_USED = {
-    "item": {
-        PLAYER_TYPE.SURV: [
+    MT.ITEM: {
+        PT.SURV: [
             "Flashlight",
             "Sport Flashlight",
             "Utility Flashlight",
@@ -35,8 +32,8 @@ MOST_USED = {
             "Engineer's Toolbox",
         ],
     },
-    "offering": {
-        PLAYER_TYPE.KILLER: [
+    MT.OFFERING: {
+        PT.KILLER: [
             "Survivor Pudding",
             "Bloody Party Streamers",
             "Putrid Oak",
@@ -49,7 +46,7 @@ MOST_USED = {
             "Ebony Memento Mori",
             "Black Ward",
         ],
-        PLAYER_TYPE.SURV: [
+        PT.SURV: [
             "Bound Envelope",
             "Escape! Cake",
             "Bloody Party Streamers",
@@ -92,8 +89,8 @@ def init_current(
     total_cells: int,
     n_items: int,
     mt: "ModelType",
-    ifk: bool,
-) -> tuple[pd.DataFrame, int]:
+    ifk: "IsForKiller",
+) -> tuple[pd.DataFrame, "LabelId"]:
     """Initialize current information. Also return fmt's null id."""
     null_id = NULL_INT_IDS[mt][int(ifk)]
 
@@ -121,7 +118,7 @@ def init_current(
 def init_pending(
     labels: pd.DataFrame,
     mt: "ModelType",
-    ifk: bool,
+    ifk: "IsForKiller",
 ) -> tuple[np.ndarray, int]:
     """Initiate pending array.
 
@@ -141,38 +138,60 @@ def init_pending(
     return np.nonzero(mask)[0], int(pt_mask.sum())
 
 
-def update_current(lbl, update_match: bool) -> pd.DataFrame:
-    """Update current information."""
-    ptrs = lbl.pending[lbl.counts.ptr_min:lbl.counts.ptr_max]
-
-    c_labels: DataFrame = lbl.labels.iloc[ptrs, lbl.column_ixs]
-
-    # Labels info
-    labels = sum(
-        ([row[c] for c in lbl.columns] for _, row in c_labels.iterrows()),
-        [],
-    )
-    players = sum(
-        (
-            [pl_id for _ in lbl.columns]
-            for pl_id in c_labels.index.get_level_values(1).values
+def process_labels_and_players(
+    lbl,
+    current_labels: pd.DataFrame,
+) -> tuple[list, list]:
+    return (
+        sum(
+            (
+                [row[c] for c in lbl.columns]
+                for _, row in current_labels.iterrows()
+            ),
+            [],
         ),
-        [],
-    )
-
-    # Match info
-    m_cols = ["filename", "match_date", "dbd_version"]
-    m_cols_ext = ["id"] + m_cols
-    if update_match:
-        match_ids = sum(
-            ([mid for _ in lbl.columns] for mid in c_labels.index.get_level_values(0).values),
+        sum(
+            (
+                [pl_id for _ in lbl.columns]
+                for pl_id in current_labels.index.get_level_values(1).values
+            ),
             [],
         )
-        c_matches: DataFrame = lbl.matches[m_cols].loc[match_ids]
+    )
+
+
+def process_matches(
+    lbl,
+    current_labels: pd.DataFrame,
+    update_match: bool,
+) -> pd.DataFrame:
+    m_cols = ["filename", "match_date", "dbd_version"]
+    m_cols_ext = ["id"] + m_cols
+
+    if update_match:
+        match_ids = sum(
+            (
+                [mid for _ in lbl.columns]
+                for mid in current_labels.index.get_level_values(0).values
+            ),
+            [],
+        )
+        c_matches: pd.DataFrame = lbl.matches[m_cols].loc[match_ids]
         c_matches = c_matches.reset_index(drop=False)
         c_matches = c_matches.rename({c: f"m_{c}" for c in m_cols_ext}, axis=1)
     else:
         c_matches = lbl.current[[f"m_{c}" for c in m_cols_ext]]
+
+    return c_matches
+
+
+def update_current(lbl, update_match: bool) -> pd.DataFrame:
+    """Update current information."""
+    ptrs = lbl.pending[lbl.counts.ptr_min:lbl.counts.ptr_max]
+    c_labels: pd.DataFrame = lbl.labels.iloc[ptrs, lbl.column_ixs]
+
+    labels, players = process_labels_and_players(lbl, c_labels)
+    c_matches = process_matches(lbl, c_labels, update_match)
 
     return pd.concat(
         (
@@ -188,41 +207,50 @@ def update_current(lbl, update_match: bool) -> pd.DataFrame:
 # * Labeler
 
 
-def options_with_types(
-    path: "Path",
+def filter_nulls(
+    options: pd.DataFrame,
     mt: "ModelType",
-    ifk: bool,
-) -> pd.Series:
-    pt = PLAYER_TYPE.ifk_to_pt(ifk)
-
-    options = pd.read_csv(path, usecols=["name", "id", "type_id"])
-
+    ifk: "IsForKiller",
+) -> tuple[pd.DataFrame, str]:
+    """Filter special LabelIds that represent nulls."""
     mt_null_col = NULL_IDS_BY_MT[mt][int(ifk)]
     mt_wrong_null_col = NULL_IDS_BY_MT[mt][1 - int(ifk)]
     options = options[options["name"] != mt_wrong_null_col]
+    return options, mt_null_col
 
+
+def add_types(options: pd.DataFrame, mt: "ModelType") -> pd.DataFrame:
+    """Add item types to the 'options' DataFrame."""
     path_types = f"app/cache/predictables/{mt}_types.csv"
+
     options_types = pd.read_csv(
         path_types,
         usecols=["id", "emoji", "is_for_killer"],
     )
     options_types.columns = ["type_id", "emoji", "is_for_killer"]
 
-    options = pd.merge(options, options_types, how="left", on="type_id")
+    return pd.merge(options, options_types, how="left", on="type_id")
 
+
+def process_options(options: pd.DataFrame, ifk: "IsForKiller") -> pd.DataFrame:
     options = options[
         options["is_for_killer"].isnull() |
         (options["is_for_killer"] == ifk)
     ]
     options = options.drop("is_for_killer", axis=1)
 
-    # Sorting
-
     options["emoji"] = options["emoji"].fillna("❓")
 
-    options = options.sort_values(["type_id", "name"])
+    return options.sort_values(["type_id", "name"])
 
-    # Most used items
+
+def reorder_mu(
+    options: pd.DataFrame,
+    mt: "ModelType",
+    pt: "PlayerType",
+    mt_null_col: str,
+) -> pd.DataFrame:
+    """Reorder most used items."""
     if mt in MOST_USED and pt in MOST_USED[mt]:
         options = options.set_index("name", drop=True)
         most_used_df = options.loc[[mt_null_col] + MOST_USED[mt][pt]]
@@ -234,30 +262,44 @@ def options_with_types(
             axis=0,
         )
         options = options.reset_index(drop=False)
+    return options
 
-    # Least used and non-possible item types
-    if mt == "item":
+
+def reorder_lu_and_np(
+    options: pd.DataFrame,
+    mt: "ModelType",
+    ifk: "IsForKiller",
+) -> pd.DataFrame:
+    """Reorder least used and non-possible item types."""
+    if mt == MT.ITEM:
         mask = options["type_id"] == 7
-        options = pd.concat(
-            (options[~mask], options[mask]),
-            axis=0,
-            ignore_index=True,
-        )
-    elif mt == "addons" and not ifk:
+    elif mt == MT.ADDONS and not ifk:
         mask = options["type_id"].isin([3, 4, 7])
-        options = pd.concat(
-            (options[~mask], options[mask]),
-            axis=0,
-            ignore_index=True,
-        )
-    elif mt == "offering":
+    elif mt == MT.OFFERING:
         mask = options["type_id"].isin([3, 6, 9, 12, 13])
-        options = pd.concat(
-            (options[~mask], options[mask]),
-            axis=0,
-            ignore_index=True,
-        )
 
+    return pd.concat(
+        (options[~mask], options[mask]),
+        axis=0,
+        ignore_index=True,
+    )
+
+
+def options_with_types(
+    path: "Path",
+    mt: "ModelType",
+    ifk: "IsForKiller",
+) -> pd.Series:
+    pt = PT.ifk_to_pt(ifk)
+
+    options = pd.read_csv(path, usecols=["name", "id", "type_id"])
+
+    options, mt_null_col = filter_nulls(options, mt, ifk)
+    options = add_types(options, mt)
+    options = process_options(options, ifk)
+
+    options = reorder_mu(options, mt, pt, mt_null_col)
+    options = reorder_lu_and_np(options, mt, ifk)
     options = options.drop("type_id", axis=1)
 
     options = options.apply(

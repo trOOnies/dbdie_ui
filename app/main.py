@@ -1,14 +1,15 @@
 """Main script for DBDIE UI."""
 
+from dbdie_classes.options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
+from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
 from dotenv import load_dotenv
+
 
 from api import cache_function
 from classes.labeler import Labeler, LabelerSelector
 from data.clean import make_clean_function
 from data.extract import extract_from_api
 from data.load import load_from_files
-from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
-from options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
 from ui import create_ui
 
 with open("app/styles.css") as f:

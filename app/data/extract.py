@@ -1,11 +1,11 @@
+"""Code for the extract data phase."""
+
+from dbdie_classes.options.SQL_COLS import MANUALLY_CHECKED_COLS
 import requests
 import pandas as pd
 
 from api import endp
 from paths import IMG_REF_RP
-from options.MODEL_TYPES import ALL_MULTIPLE_CHOICE as ALL_MT
-
-MANUALLY_CHECKED_COLS = [f"{fmt}_mckd" for fmt in ALL_MT]
 
 
 def get_matches_and_labels() -> tuple[list[dict], list[dict]]:

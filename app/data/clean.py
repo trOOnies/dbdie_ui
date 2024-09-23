@@ -1,12 +1,14 @@
+"""Code for the clean data phase."""
+
+from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
 import pandas as pd
 from typing import TYPE_CHECKING
 
-from options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
 if TYPE_CHECKING:
-    from classes.base import ModelType
+    from dbdie_classes.base import IsForKiller, ModelType
 
 
-def make_clean_function(model_type: "ModelType", is_for_killer: bool):
+def make_clean_function(model_type: "ModelType", is_for_killer: "IsForKiller"):
     def clean_item(item_json: list[dict]) -> pd.DataFrame:
         """Clean raw item."""
         item = pd.DataFrame(item_json)
