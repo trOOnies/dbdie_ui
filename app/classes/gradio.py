@@ -1,10 +1,14 @@
 """Gradio related classes."""
 
 import gradio as gr
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 
-Options = list[tuple[str, int]]
-LabeledImages = list[tuple[str, int]]
+if TYPE_CHECKING:
+    from dbdie_classes.base import LabelId
+
+Options = list[tuple[str, "LabelId"]]
+OptionsList = list[Options]
+LabeledImages = list[tuple[str, "LabelId"]]
 LabelBox = Callable[[str, int], tuple[gr.Image, gr.Dropdown]]
 
 ImageDict = dict[int, gr.Image]

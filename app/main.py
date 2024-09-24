@@ -1,9 +1,8 @@
 """Main script for DBDIE UI."""
 
-from dbdie_classes.options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
+from dbdie_classes.options.FMT import to_fmt
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
 from dotenv import load_dotenv
-
 
 from api import cache_function
 from classes.labeler import Labeler, LabelerSelector
@@ -32,9 +31,9 @@ def main() -> None:
     matches, labels = load_from_files()
 
     labelers = {
-        f"{mt}__{ks}": Labeler(matches, labels, fmt=f"{mt}__{ks}")
+        to_fmt(mt, ifk): Labeler(matches, labels, fmt=to_fmt(mt, ifk))
         for mt in ALL_MT_MULT
-        for ks in ALL_PLAYER_TYPES
+        for ifk in [False, True]
     }
     labeler_orch = LabelerSelector(labelers)
 

@@ -2,6 +2,7 @@
 
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT
 from dbdie_classes.options.MODEL_TYPE import EMOJIS as MT_EMOJIS
+from dbdie_classes.paths import absp, CROPPED_IMG_FD_RP
 import gradio as gr
 import os
 from typing import TYPE_CHECKING
@@ -15,7 +16,6 @@ from components.quick_labeling import (
     ql_button_logic,
 )
 from constants import ROW_COLORS_CLASSES
-from paths import CROPPED_IMG_RP, absp
 
 if TYPE_CHECKING:
     from classes.labeler import LabelerSelector
@@ -64,6 +64,8 @@ def create_ui(
                     ql_dict = ql_button_logic(labeler)
 
         with gr.Tab("Current match"):
+            # * Current match information
+
             with gr.Row(visible=labeler.done) as cr_note_row:
                 gr.Markdown("No match selected. 🤷")
 
@@ -71,7 +73,7 @@ def create_ui(
                 filename = labeler.filename(0)  # TODO: Change
                 cr_match_img = gr.Image(
                     os.path.join(
-                        absp(CROPPED_IMG_RP),
+                        absp(CROPPED_IMG_FD_RP),
                         filename,
                     ) if filename is not None else filename,
                     label={filename},
@@ -80,14 +82,14 @@ def create_ui(
                 )
 
         with gr.Tab("Inference"):
-            # Actual inference with a trained model (WIP)
+            # * Actual inference with a trained model (WIP)
             with gr.Row():
                 inf_img = gr.Image()
                 inf_ta = gr.TextArea(interactive=False, show_copy_button=True)
             inf_btt = gr.Button("Label")
 
         with gr.Tab("Training corpus"):
-            # Information about the DBDIE base (WIP)
+            # * Information about the DBDIE base (WIP)
             with gr.Row():
                 tc_info = gr.Markdown()
 

@@ -6,7 +6,7 @@ from dbdie_classes.options.FMT import assert_mt_and_pt, extract_mt_pt_ifk, to_fm
 from dbdie_classes.options.MODEL_TYPE import WITH_TYPES
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
 from dbdie_classes.options.PLAYER_TYPE import pt_to_ifk
-from dbdie_classes.options.PLAYER_TYPE import ALL as ALL_PLAYER_TYPES
+from dbdie_classes.paths import absp, CROPS_MAIN_FD_RP
 import os
 import numpy as np
 import pandas as pd
@@ -22,7 +22,6 @@ from code.labeler import (
     options_wo_types,
     update_current,
 )
-from paths import absp, CROPS_RP
 
 if TYPE_CHECKING:
     from dbdie_classes.base import (
@@ -36,6 +35,9 @@ if TYPE_CHECKING:
         Path,
         PlayerId,
     )
+
+    from classes.base import LabelsDataFrame, MatchesDataFrame
+    from classes.gradio import OptionsList
 
 
 @dataclass
@@ -106,8 +108,8 @@ class Labeler:
 
     def __init__(
         self,
-        matches: pd.DataFrame,  # TODO: disallow modifying cols other than the mt's
-        labels: pd.DataFrame,
+        matches: "MatchesDataFrame",  # TODO: disallow modifying cols other than the mt's
+        labels: "LabelsDataFrame",
         fmt: "FullModelType",
     ) -> None:
         self.matches = matches  # id must be the index
@@ -116,7 +118,7 @@ class Labeler:
         self.mt, self.pt, self.ifk = extract_mt_pt_ifk(self.fmt)
         assert_mt_and_pt(self.mt, self.pt)
         self.fmt = fmt
-        self.folder_path = absp(f"{CROPS_RP}/{fmt}")
+        self.folder_path = absp(f"{CROPS_MAIN_FD_RP}/{fmt}")
 
         self.columns, self.column_ixs = init_cols(self.mt, self.labels)
 
@@ -249,6 +251,28 @@ class Labeler:
 
         self.current = update_current(self, update_match=False)
 
+    # * Other predictables
+
+    def filter_fmt_with_current(self, fmt: "FullModelType") -> pd.Series:
+        """Filter another fmt with the current info of the labeler's fmt."""
+        assert fmt != self.fmt
+        mt, _, ifk = extract_mt_pt_ifk(fmt)
+
+        # Filter data so as to make the index filtering more efficient
+        if ifk is None:
+            data = self.labels[mt]
+        else:
+            mask_ifk = self.labels.index.get_level_values(1) == 4
+            if not ifk:
+                mask_ifk = np.logical_not(mask_ifk)
+            data = self.labels[mt][mask_ifk]
+
+        return data[
+            data.index == self.current[["m_id", "player_id"]].apply(
+                lambda row: (row["m_id"], row["player_id"])
+            )
+        ]
+
 
 class LabelerSelector:
     """Labeler selector. Also harbors the current dropdown dictionary."""
@@ -310,15 +334,11 @@ class LabelerSelector:
         assert not self.labeler_has_changed
         self.labeler_has_changed = True
 
-        path = f"app/cache/predictables/{self.fmt}.csv"
-
-        options = (
-            options_with_types(path, self.mt, self.ifk)
+        self.options: "OptionsList" = (
+            options_with_types(self.labeler)
             if self.mt in WITH_TYPES
-            else options_wo_types(path)
+            else options_wo_types(self.mt, self.ifk, self.labeler.total_cells)
         )
-
-        self.options: list[tuple[str, "LabelId"]] = options.to_list()
 
     def get_all_labels_counters(self) -> dict["ModelType", list[LabelsCounter]]:
         """Get all labelers' LabelCounters.
@@ -327,10 +347,10 @@ class LabelerSelector:
         return {
             mt: [
                 (
-                    self.labelers[f"{mt}__{pt}"].counts
-                    if f"{mt}__{pt}" in self.labelers 
+                    self.labelers[to_fmt(mt, ifk)].counts
+                    if to_fmt(mt, ifk) in self.labelers 
                     else LabelsCounter(completed=0, pending=0, n_players=0, n_items=0)
-                ) for pt in ALL_PLAYER_TYPES
+                ) for ifk in [False, True]
             ] for mt in ALL_MT_MULT
         }
 

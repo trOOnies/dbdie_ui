@@ -2,12 +2,12 @@
 
 from dbdie_classes.options import PLAYER_TYPE
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT
+from dbdie_classes.paths import absp, CROPPED_IMG_FD_RP
 import gradio as gr
 from typing import Any, TYPE_CHECKING
 
 from api import upload_labels
 from img import rescale_img
-from paths import absp
 
 if TYPE_CHECKING:
     from dbdie_classes.base import LabelId, Path
@@ -36,7 +36,7 @@ def update_data(
     go_back: bool,
 ) -> list["LabelId"]:
     if upload:
-        upload_labels(labeler, list(input_data[:16]))
+        upload_labels(labeler, list(input_data[:labeler.total_cells]))
         return labeler.next()
     elif go_back:
         return labeler.next(go_back=True)
@@ -52,13 +52,13 @@ def next_info(
         return (
             labeler.get_crops("jpg"),
             updated_data,
-            absp(f"data/img/cropped/{labeler.filename(0)}"),  # TODO: Change
+            absp(f"{CROPPED_IMG_FD_RP}/{labeler.filename(0)}"),  # TODO: Change
         )
     else:
         print("LABELING DONE")
         return (
-            [None for _ in range(16)],
-            [0 for _ in range(16)],
+            [None for _ in range(labeler.total_cells)],
+            [0 for _ in range(labeler.total_cells)],
             None,
         )
 
@@ -83,8 +83,8 @@ def update_dropdowns(
     if labeler_orch.labeler_has_changed:
         labeler_orch.labeler_has_changed = False
         return [
-            gr.update(choices=labeler_orch.options, value=label)
-            for label in updated_data
+            gr.update(choices=options, value=label)
+            for label, options in zip(updated_data, labeler_orch.options)
         ]
     else:
         return [gr.update(value=label) for label in updated_data]

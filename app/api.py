@@ -8,9 +8,10 @@ import requests
 from typing import TYPE_CHECKING
 
 from code.api import extract_player_info
+from paths import load_predictable_csv, load_types_csv
 
 if TYPE_CHECKING:
-    from dbdie_classes.base import IsForKiller, LabelId, ModelType
+    from dbdie_classes.base import IsForKiller, LabelId, ModelType, Path
     from classes.labeler import Labeler
 
 
@@ -35,12 +36,8 @@ def get_items(
     is_for_killer: bool,
     local_fallback: bool,
     is_type: bool,
-) -> tuple[list, str]:
-    if is_type:
-        path = f"app/cache/predictables/{mt}_types.csv"
-    else:
-        path = f"app/cache/predictables/{to_fmt(mt, is_for_killer)}.csv"
-
+    clean_f,
+) -> tuple[list, "Path"]:
     try:
         if is_type:
             items = requests.get(endp(f"/{mt}/types"))
@@ -58,12 +55,21 @@ def get_items(
         if not local_fallback:
             raise Exception(items.reason) from e
         else:
-            if os.path.exists(path):
-                print("Using local data.")
-                return
-            else:
+            try:
+                print("Trying with local data...")
+                df, path = (
+                    load_types_csv(mt)
+                    if is_type
+                    else load_predictable_csv(to_fmt(mt, is_for_killer))
+                )  # TODO: Check if it works
+                print("Local data loaded successfully.")
+                return df, path
+            except Exception as e:
                 print("[ERROR] Local data not found.")
                 raise Exception(items.reason) from e
+
+    items_json = items.json()
+    items = clean_f(items_json)
 
     return items, path
 
@@ -75,17 +81,23 @@ def cache_function(
     local_fallback: bool,
 ) -> None:
     """Get predictables from the API and cache."""
-    items, path = get_items(mt, is_for_killer, local_fallback, is_type=False)
-    items_json = items.json()
-    items = clean_f(items_json)
-
+    items, path = get_items(
+        mt,
+        is_for_killer,
+        local_fallback,
+        is_type=False,
+        clean_f=clean_f,
+    )
     items.to_csv(path, index=False)
 
     if mt in WITH_TYPES:
-        item_types, path_types = get_items(mt, is_for_killer, local_fallback, is_type=True)
-        item_types_json = item_types.json()
-        item_types = clean_f(item_types_json)
-
+        item_types, path_types = get_items(
+            mt,
+            is_for_killer,
+            local_fallback,
+            is_type=True,
+            clean_f=clean_f,
+        )
         item_types.to_csv(path_types, index=False)
 
 

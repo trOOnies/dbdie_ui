@@ -2,15 +2,29 @@
 
 from dbdie_classes.options import MODEL_TYPE as MT
 from dbdie_classes.options import PLAYER_TYPE as PT
+from dbdie_classes.options.FMT import to_fmt
 from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
 from dbdie_classes.options.NULL_IDS import INT_IDS as NULL_INT_IDS
+from dbdie_classes.options.NULL_IDS import mt_is_null
 from dbdie_classes.options.SQL_COLS import MT_TO_COLS
 import numpy as np
 import pandas as pd
 from typing import TYPE_CHECKING
 
+from paths import load_predictable_csv, load_types_csv
+
 if TYPE_CHECKING:
-    from dbdie_classes.base import IsForKiller, ModelType, LabelId, Path, PlayerType
+    from dbdie_classes.base import (
+        FullModelType,
+        IsForKiller,
+        LabelId,
+        ModelType,
+        PlayerId,
+        PlayerType,
+    )
+
+    from classes.base import CurrentDataFrame
+    from classes.gradio import OptionsList
 
 TOTAL_CELLS = 16
 
@@ -90,7 +104,7 @@ def init_current(
     n_items: int,
     mt: "ModelType",
     ifk: "IsForKiller",
-) -> tuple[pd.DataFrame, "LabelId"]:
+) -> tuple["CurrentDataFrame", "LabelId"]:
     """Initialize current information. Also return fmt's null id."""
     null_id = NULL_INT_IDS[mt][int(ifk)]
 
@@ -138,10 +152,14 @@ def init_pending(
     return np.nonzero(mask)[0], int(pt_mask.sum())
 
 
+# * Smaller functions
+
+
 def process_labels_and_players(
     lbl,
     current_labels: pd.DataFrame,
-) -> tuple[list, list]:
+) -> tuple[list["LabelId" | None], list["PlayerId"]]:
+    """Process labels and players function for 'update_current'."""
     return (
         sum(
             (
@@ -165,6 +183,7 @@ def process_matches(
     current_labels: pd.DataFrame,
     update_match: bool,
 ) -> pd.DataFrame:
+    """Process matches function for 'update_current'."""
     m_cols = ["filename", "match_date", "dbd_version"]
     m_cols_ext = ["id"] + m_cols
 
@@ -185,28 +204,6 @@ def process_matches(
     return c_matches
 
 
-def update_current(lbl, update_match: bool) -> pd.DataFrame:
-    """Update current information."""
-    ptrs = lbl.pending[lbl.counts.ptr_min:lbl.counts.ptr_max]
-    c_labels: pd.DataFrame = lbl.labels.iloc[ptrs, lbl.column_ixs]
-
-    labels, players = process_labels_and_players(lbl, c_labels)
-    c_matches = process_matches(lbl, c_labels, update_match)
-
-    return pd.concat(
-        (
-            c_matches,
-            pd.Series(labels, name="label_id").fillna(lbl.null_id).astype(int),
-            pd.Series(players, name="player_id"),
-            lbl.current["item_id"],
-        ),
-        axis=1,
-    )
-
-
-# * Labeler
-
-
 def filter_nulls(
     options: pd.DataFrame,
     mt: "ModelType",
@@ -221,18 +218,80 @@ def filter_nulls(
 
 def add_types(options: pd.DataFrame, mt: "ModelType") -> pd.DataFrame:
     """Add item types to the 'options' DataFrame."""
-    path_types = f"app/cache/predictables/{mt}_types.csv"
-
-    options_types = pd.read_csv(
-        path_types,
-        usecols=["id", "emoji", "is_for_killer"],
-    )
+    options_types, _ = load_types_csv(mt, usecols=["id", "emoji", "is_for_killer"])
     options_types.columns = ["type_id", "emoji", "is_for_killer"]
-
     return pd.merge(options, options_types, how="left", on="type_id")
 
 
+def base_options(options: pd.DataFrame, labeler) -> "OptionsList":
+    """Get base options, provided that there is no defined correlation between FMTs."""
+    return [options.str_value.to_list() for _ in range(labeler.total_cells)]
+
+
+def correlated_options(
+    options: pd.DataFrame,
+    labeler,
+    fmt: "FullModelType",
+    precond_mt: "ModelType",
+    uniqueness: bool,
+) -> "OptionsList":
+    """Get options when there is a defined correlation between FMTs."""
+    precond_data: pd.Series = labeler.filter_fmt_with_current(
+        to_fmt(precond_mt, True)
+    )
+    mask_precond = ~mt_is_null(precond_data, precond_mt)
+    if not mask_precond.any():
+        return base_options(options, labeler)
+
+    precond_ids = precond_data[mask_precond]
+
+    df, _ = load_predictable_csv(fmt, usecols=["id", "user_id"])  # TODO: Change user_id to specific character_ids
+    df = df[df["user_id"].isin(precond_ids)].drop_duplicates()
+    df = df.set_index("user_id", drop=True, verify_integrity=uniqueness)
+
+    if uniqueness:
+        return [
+            [df.at[pc_val, "id"]]
+            if pc
+            else options.str_value.to_list()
+            for pc, pc_val in zip(mask_precond, precond_data)
+        ]
+    else:
+        return [
+            df.loc[pc_val, "id"].to_list()
+            if pc
+            else options.str_value.to_list()
+            for pc, pc_val in zip(mask_precond, precond_data)
+        ]
+
+
+def filter_correlated_mts(
+    options: pd.DataFrame,
+    mt: "ModelType",
+    ifk: "IsForKiller",
+    labeler,
+) -> "OptionsList":
+    conds = {
+        "killer item": ifk and (mt == MT.ITEM),
+        "killer addons": ifk and (mt == MT.ADDONS),
+        "surv addons": (not ifk) and (mt == MT.ADDONS),
+    }
+    if not any(conds.values()):
+        return base_options(options, labeler)
+
+    fmt = to_fmt(mt, ifk)
+    if conds["killer item"]:  # if character is filled, set item
+        return correlated_options(options, labeler, fmt, precond_mt=MT.CHARACTER, uniqueness=True)
+    elif conds["killer addons"]:  # if character is filled, set addons
+        return correlated_options(options, labeler, fmt, precond_mt=MT.CHARACTER, uniqueness=False)
+    elif conds["surv addons"]:  # if item is filled, set addons
+        return correlated_options(options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False)
+    else:
+        raise Exception("Correlation MT condition not mapped by the ifs.")
+
+
 def process_options(options: pd.DataFrame, ifk: "IsForKiller") -> pd.DataFrame:
+    """Process options DataFrame."""
     options = options[
         options["is_for_killer"].isnull() |
         (options["is_for_killer"] == ifk)
@@ -285,41 +344,73 @@ def reorder_lu_and_np(
     )
 
 
-def options_with_types(
-    path: "Path",
-    mt: "ModelType",
-    ifk: "IsForKiller",
-) -> pd.Series:
+# * Functions
+
+
+def update_current(lbl, update_match: bool) -> "CurrentDataFrame":
+    """Update current information."""
+    ptrs = lbl.pending[lbl.counts.ptr_min:lbl.counts.ptr_max]
+    c_labels: pd.DataFrame = lbl.labels.iloc[ptrs, lbl.column_ixs]
+
+    labels, players = process_labels_and_players(lbl, c_labels)
+    c_matches = process_matches(lbl, c_labels, update_match)
+
+    return pd.concat(
+        (
+            c_matches,
+            pd.Series(labels, name="label_id").fillna(lbl.null_id).astype(int),
+            pd.Series(players, name="player_id"),
+            lbl.current["item_id"],
+        ),
+        axis=1,
+    )
+
+
+def options_with_types(labeler) -> "OptionsList":
+    """Get current labeler's options if the model type item has item types."""
+    mt = labeler.mt
+    ifk = labeler.ifk
     pt = PT.ifk_to_pt(ifk)
 
-    options = pd.read_csv(path, usecols=["name", "id", "type_id"])
-
+    # Options as DataFrame
+    options, _ = load_predictable_csv(to_fmt(mt, ifk), cols=["name", "id", "type_id"])
     options, mt_null_col = filter_nulls(options, mt, ifk)
+
     options = add_types(options, mt)
     options = process_options(options, ifk)
 
     options = reorder_mu(options, mt, pt, mt_null_col)
     options = reorder_lu_and_np(options, mt, ifk)
-    options = options.drop("type_id", axis=1)
 
-    options = options.apply(
+    options["str_value"] = options.apply(
         lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
         axis=1,
     )
-    return options
+    options = options.drop("emoji", axis=1)
+
+    # Options as list[DataFrame]
+    return filter_correlated_mts(options, mt, ifk, labeler)
 
 
-def options_wo_types(path: "Path") -> pd.Series:
+def options_wo_types(
+    mt: "ModelType",
+    ifk: "IsForKiller",
+    total_cells: int,
+) -> "OptionsList":
+    """Get current labeler's options if the model type item doesn't have item types."""
+    fmt = to_fmt(mt, ifk)
+
     try:
-        options = pd.read_csv(path, usecols=["emoji", "name", "id"])
+        options, _ = load_predictable_csv(fmt, usecols=["emoji", "name", "id"])
         options = options.apply(
             lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
             axis=1,
         )
     except (KeyError, ValueError):
-        options = pd.read_csv(path, usecols=["name", "id"])
+        options, _ = load_predictable_csv(fmt, usecols=["name", "id"])
         options = options.apply(
             lambda row: (f"{row['name']}", row["id"]),
             axis=1,
         )
-    return options
+
+    return [options.to_list() for _ in range(total_cells)]
