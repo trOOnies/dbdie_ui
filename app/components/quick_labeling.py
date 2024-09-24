@@ -20,7 +20,8 @@ if TYPE_CHECKING:
     from classes.gradio import (
         DropdownDict, ImageBox, ImageDict, LabeledImages, Options
     )
-    from classes.labeler import Labeler, LabelerSelector
+    from classes.labeler import Labeler
+    from classes.labeler_selector import LabelerSelector
 
 
 def images_box(options: "Options", w: int) -> "ImageBox":

@@ -18,7 +18,7 @@ from components.quick_labeling import (
 from constants import ROW_COLORS_CLASSES
 
 if TYPE_CHECKING:
-    from classes.labeler import LabelerSelector
+    from classes.labeler_selector import LabelerSelector
 
 
 def create_ui(

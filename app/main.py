@@ -5,7 +5,8 @@ from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
 from dotenv import load_dotenv
 
 from api import cache_function
-from classes.labeler import Labeler, LabelerSelector
+from classes.labeler import Labeler
+from classes.labeler_selector import LabelerSelector
 from data.clean import make_clean_function
 from data.extract import extract_from_api
 from data.load import load_from_files

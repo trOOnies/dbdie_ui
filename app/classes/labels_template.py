@@ -6,6 +6,7 @@ from code.labels_template import PHS, player_to_dict, to_specific_player
 
 
 class LabelsTemplate:
+    """Text-based template for the formatting of labeling related information on the UI."""
     def __init__(self, template: str) -> None:
         self.template = template
         assert all(all(ph in self.template for ph in phs_i) for phs_i in PHS.values())
