@@ -2,14 +2,14 @@
 
 from dbdie_classes.options import MODEL_TYPE as MT
 from dbdie_classes.options import PLAYER_TYPE as PT
-from dbdie_classes.options.FMT import to_fmt
+from dbdie_classes.options.FMT import extract_mt_pt_ifk, to_fmt
 from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
 from dbdie_classes.options.NULL_IDS import INT_IDS as NULL_INT_IDS
 from dbdie_classes.options.NULL_IDS import mt_is_null
 from dbdie_classes.options.SQL_COLS import MT_TO_COLS
 import numpy as np
 import pandas as pd
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from paths import load_predictable_csv, load_types_csv
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         FullModelType,
         IsForKiller,
         LabelId,
+        LabelName,
         ModelType,
         PlayerId,
         PlayerType,
@@ -104,7 +105,7 @@ def init_current(
     n_items: int,
     mt: "ModelType",
     ifk: "IsForKiller",
-) -> tuple["CurrentDataFrame", "LabelId"]:
+) -> tuple["CurrentDataFrame", "LabelId", "LabelName"]:
     """Initialize current information. Also return fmt's null id."""
     null_id = NULL_INT_IDS[mt][int(ifk)]
 
@@ -126,6 +127,11 @@ def init_current(
             }
         ),
         null_id,
+        (
+            NULL_IDS_BY_MT[mt][int(ifk)]
+            if len(NULL_IDS_BY_MT[mt]) == 2
+            else NULL_IDS_BY_MT[mt][0]
+        ),
     )
 
 
@@ -158,7 +164,7 @@ def init_pending(
 def process_labels_and_players(
     lbl,
     current_labels: pd.DataFrame,
-) -> tuple[list["LabelId" | None], list["PlayerId"]]:
+) -> tuple[list[Optional["LabelId"]], list["PlayerId"]]:
     """Process labels and players function for 'update_current'."""
     return (
         sum(
@@ -236,6 +242,9 @@ def correlated_options(
     uniqueness: bool,
 ) -> "OptionsList":
     """Get options when there is a defined correlation between FMTs."""
+    print(fmt)
+    mt, _, _ = extract_mt_pt_ifk(fmt)
+
     precond_data: pd.Series = labeler.filter_fmt_with_current(
         to_fmt(precond_mt, True)
     )
@@ -243,22 +252,65 @@ def correlated_options(
     if not mask_precond.any():
         return base_options(options, labeler)
 
-    precond_ids = precond_data[mask_precond]
+    precond_ids = precond_data[mask_precond].astype(int).unique()
 
-    df, _ = load_predictable_csv(fmt, usecols=["id", "user_id"])  # TODO: Change user_id to specific character_ids
-    df = df[df["user_id"].isin(precond_ids)].drop_duplicates()
-    df = df.set_index("user_id", drop=True, verify_integrity=uniqueness)
+    item_id_col = "power_id" if mt == MT.CHARACTER else "item_id"
+    df, _ = load_predictable_csv(
+        fmt,
+        usecols=(
+            ["id", "rarity_id", "name", item_id_col]
+            if mt in MT.WITH_TYPES
+            else ["id", "emoji", "name", item_id_col]
+        ),
+    )
+
+    df = df[df[item_id_col].notnull()].astype({item_id_col: int})
+
+    df = df[df[item_id_col].isin(precond_ids)]
+
+    # Rarity
+    if mt in MT.WITH_TYPES:
+        df_rarity, _ = load_predictable_csv("rarity", usecols=["id", "emoji"])
+        df_rarity = df_rarity.rename({"id": "rarity_id"}, axis=1)
+        df = pd.merge(df, df_rarity, on="rarity_id", how="left")
+        df = df.sort_values(["rarity_id", "id"])
+        df = df.drop("rarity_id", axis=1)
+
+    # Item type
+    # if mt in MT.WITH_TYPES:
+    #     df_types, _ = load_types_csv(mt, usecols=["id", "emoji"])
+    #     df_types = df_types.rename({"id": "type_id"}, axis=1)
+    #     df = pd.merge(df, df_types, on="type_id", how="left").drop("type_id", axis=1)
+
+    df = pd.concat(
+        (
+            pd.DataFrame(
+                [[labeler.null_id, labeler.null_name, 0, "❌"]],
+                columns=["id", "name", "item_id", "emoji"],
+            ),
+            df,
+        ),
+        axis=0,
+        ignore_index=True,
+    )
+    df = df.set_index(item_id_col, drop=True, verify_integrity=uniqueness)
+
+    id_col = "base_char_id" if mt == MT.CHARACTER else "id"
+    df["ui_name"] = df.apply(
+        lambda row: (row["emoji"] + " " + row["name"], row[id_col]),
+        axis=1,
+    )
 
     if uniqueness:
         return [
-            [df.at[pc_val, "id"]]
+            [df.at[int(pc_val), "ui_name"]]
             if pc
             else options.str_value.to_list()
             for pc, pc_val in zip(mask_precond, precond_data)
         ]
     else:
         return [
-            df.loc[pc_val, "id"].to_list()
+            [df["ui_name"].iat[0]] + df.loc[int(pc_val), "ui_name"].to_list()
             if pc
             else options.str_value.to_list()
             for pc, pc_val in zip(mask_precond, precond_data)
@@ -272,7 +324,7 @@ def filter_correlated_mts(
     labeler,
 ) -> "OptionsList":
     conds = {
-        "killer item": ifk and (mt == MT.ITEM),
+        "killer character": ifk and (mt == MT.CHARACTER),
         "killer addons": ifk and (mt == MT.ADDONS),
         "surv addons": (not ifk) and (mt == MT.ADDONS),
     }
@@ -280,12 +332,18 @@ def filter_correlated_mts(
         return base_options(options, labeler)
 
     fmt = to_fmt(mt, ifk)
-    if conds["killer item"]:  # if character is filled, set item
-        return correlated_options(options, labeler, fmt, precond_mt=MT.CHARACTER, uniqueness=True)
-    elif conds["killer addons"]:  # if character is filled, set addons
-        return correlated_options(options, labeler, fmt, precond_mt=MT.CHARACTER, uniqueness=False)
+    if conds["killer character"]:  # if item is filled, set characters (base and legendaries)
+        return correlated_options(
+            options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False
+        )
+    elif conds["killer addons"]:  # if item is filled, set addons
+        return correlated_options(
+            options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False
+        )
     elif conds["surv addons"]:  # if item is filled, set addons
-        return correlated_options(options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False)
+        return correlated_options(
+            options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False
+        )
     else:
         raise Exception("Correlation MT condition not mapped by the ifs.")
 
@@ -336,6 +394,8 @@ def reorder_lu_and_np(
         mask = options["type_id"].isin([3, 4, 7])
     elif mt == MT.OFFERING:
         mask = options["type_id"].isin([3, 6, 9, 12, 13])
+    else:
+        return options
 
     return pd.concat(
         (options[~mask], options[mask]),
@@ -373,7 +433,7 @@ def options_with_types(labeler) -> "OptionsList":
     pt = PT.ifk_to_pt(ifk)
 
     # Options as DataFrame
-    options, _ = load_predictable_csv(to_fmt(mt, ifk), cols=["name", "id", "type_id"])
+    options, _ = load_predictable_csv(to_fmt(mt, ifk), usecols=["name", "id", "type_id"])
     options, mt_null_col = filter_nulls(options, mt, ifk)
 
     options = add_types(options, mt)

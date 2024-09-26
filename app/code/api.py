@@ -1,6 +1,6 @@
 """Extra code for the 'api' Python file."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from dbdie_classes.base import LabelId, MatchId, PlayerId
@@ -11,7 +11,7 @@ def extract_player_info(
     labeler,
     labels_wrapped: "ndarray",
     player_ix: int,
-) -> tuple["MatchId", "PlayerId", "LabelId" | list["LabelId"]]:
+) -> tuple["MatchId", "PlayerId", Union["LabelId", list["LabelId"]]]:
     match_id, player_id = labeler.get_key(player_ix)
     player_labels = labels_wrapped[player_ix].tolist()
     player_labels = (

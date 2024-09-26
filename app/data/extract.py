@@ -25,7 +25,8 @@ def process_matches(matches_json: list[dict]) -> pd.DataFrame:
     """Process matches' JSON and convert to DataFrame."""
     matches = pd.DataFrame(
         [
-            {k: v for k, v in m.items() if k in ["id", "filename", "match_date", "dbd_version"]}
+            {k: v for k, v in m.items()
+            if k in ["id", "filename", "match_date", "dbd_version"]}
             for m in matches_json
         ]
     )

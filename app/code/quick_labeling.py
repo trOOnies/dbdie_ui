@@ -4,7 +4,7 @@ from dbdie_classes.options import PLAYER_TYPE
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT
 from dbdie_classes.paths import absp, CROPPED_IMG_FD_RP
 import gradio as gr
-from typing import Any, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 from api import upload_labels
 from img import rescale_img
@@ -18,15 +18,15 @@ GradioUpdate = dict[str, Any]
 def process_fmt(lbl_sel, input_data) -> None:
     """Process new full model type."""
     mt_selected = input_data[lbl_sel.labeler.total_cells][2:].lower()
-    ks_selected = input_data[lbl_sel.labeler.total_cells + 1][2:]
-    ks_selected = PLAYER_TYPE.SURV if ks_selected == "Survivor" else PLAYER_TYPE.KILLER
+    pt_selected = input_data[lbl_sel.labeler.total_cells + 1][2:]
+    pt_selected = PLAYER_TYPE.SURV if pt_selected == "Survivor" else PLAYER_TYPE.KILLER
 
     if lbl_sel.mt != mt_selected:
         print("MODEL TYPE CHANGED")
         lbl_sel.mt = mt_selected
-    elif lbl_sel.ks != ks_selected:
+    elif lbl_sel.pt != pt_selected:
         print("KILLER SURV CHANGED")
-        lbl_sel.ifk = ks_selected == PLAYER_TYPE.KILLER
+        lbl_sel.pt = pt_selected
 
 
 def update_data(
@@ -47,7 +47,7 @@ def update_data(
 def next_info(
     labeler,
     updated_data: list["LabelId"],
-) -> tuple[list["Path" | None], list["LabelId"], "Path" | None]:
+) -> tuple[list[Optional["Path"]], list["LabelId"], Optional["Path"]]:
     if not labeler.done:
         return (
             labeler.get_crops("jpg"),
@@ -63,7 +63,10 @@ def next_info(
         )
 
 
-def update_images(crops: list["Path" | None], match_img_path: "Path") -> list[GradioUpdate]:
+def update_images(
+    crops: list[Optional["Path"]],
+    match_img_path: "Path",
+) -> list[GradioUpdate]:
     return [
         gr.update(
             value=rescale_img(img, 120) if isinstance(img, str) else None,
@@ -77,14 +80,15 @@ def update_images(crops: list["Path" | None], match_img_path: "Path") -> list[Gr
 
 
 def update_dropdowns(
-    labeler_orch,
+    labeler_sel,
     updated_data: list["LabelId"],
 ):
-    if labeler_orch.labeler_has_changed:
-        labeler_orch.labeler_has_changed = False
+    if labeler_sel.labeler_has_changed:
+        labeler_sel.labeler_has_changed = False
+        print(updated_data)
         return [
             gr.update(choices=options, value=label)
-            for label, options in zip(updated_data, labeler_orch.options)
+            for label, options in zip(updated_data, labeler_sel.options)
         ]
     else:
         return [gr.update(value=label) for label in updated_data]

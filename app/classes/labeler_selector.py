@@ -4,7 +4,7 @@ from copy import deepcopy
 from dbdie_classes.options.FMT import assert_mt_and_pt, extract_mt_pt_ifk, to_fmt
 from dbdie_classes.options.MODEL_TYPE import PERKS, WITH_TYPES
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
-from dbdie_classes.options.PLAYER_TYPE import pt_to_ifk
+from dbdie_classes.options.PLAYER_TYPE import pt_to_ifk, SURV
 from typing import TYPE_CHECKING
 
 from classes.labels_counter import LabelsCounter
@@ -35,6 +35,7 @@ class LabelerSelector:
         # Start the selector with perks__surv
         self._fmt: "FullModelType" = to_fmt(PERKS, False)
         self._mt: "ModelType" = deepcopy(PERKS)
+        self._pt: "PlayerType" = deepcopy(SURV)
         self._ifk: "IsForKiller" = False
 
         for lbl in self.labelers.values():

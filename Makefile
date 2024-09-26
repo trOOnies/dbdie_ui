@@ -64,3 +64,8 @@ clean: ## Remove all lint, test, coverage and compiled Python artifacts
 
 ui: ## [gradio] Run the UI on localhost
 	python3 app/main.py
+
+rr: ## Run the UI after installing dependencies
+	clear
+	make install
+	make ui

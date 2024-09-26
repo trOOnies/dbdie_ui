@@ -4,11 +4,12 @@ import os
 
 from dbdie_classes.options.FMT import to_fmt
 from dbdie_classes.options.MODEL_TYPE import CHARACTER, TO_ID_NAMES, WITH_TYPES
+import pandas as pd
 import requests
 from typing import TYPE_CHECKING
 
 from code.api import extract_player_info
-from paths import load_predictable_csv, load_types_csv
+from paths import get_predictable_csv_path, load_predictable_csv, load_types_csv
 
 if TYPE_CHECKING:
     from dbdie_classes.base import IsForKiller, LabelId, ModelType, Path
@@ -29,6 +30,13 @@ def parse_or_raise(resp, exp_status_code: int = 200):
             msg = resp.reason
         raise Exception(msg)
     return resp.json()
+
+
+def cache_from_endpoint(endpoint: str) -> None:
+    items = requests.get(endp(endpoint))
+    assert items.status_code == 200
+    df = pd.DataFrame(items.json())
+    df.to_csv(get_predictable_csv_path("rarity", is_type=False), index=False)
 
 
 def get_items(
@@ -53,6 +61,7 @@ def get_items(
     except Exception as e:
         print("[WARNING] Problem with the API.")
         if not local_fallback:
+            # TODO: For now we don't allow fallback
             raise Exception(items.reason) from e
         else:
             try:
@@ -61,7 +70,7 @@ def get_items(
                     load_types_csv(mt)
                     if is_type
                     else load_predictable_csv(to_fmt(mt, is_for_killer))
-                )  # TODO: Check if it works
+                )
                 print("Local data loaded successfully.")
                 return df, path
             except Exception as e:
@@ -70,6 +79,11 @@ def get_items(
 
     items_json = items.json()
     items = clean_f(items_json)
+    path = (
+        get_predictable_csv_path(mt, is_type=True)
+        if is_type
+        else get_predictable_csv_path(to_fmt(mt, is_for_killer), is_type=False)
+    )
 
     return items, path
 

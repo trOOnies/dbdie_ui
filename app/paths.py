@@ -12,11 +12,19 @@ IMG_REF_RP = f"{CACHE_RP}/img_ref"
 PREDICTABLES_RP = f"{CACHE_RP}/predictables"
 
 
+def get_predictable_csv_path(val: str, is_type: bool) -> "Path":
+    return (
+        f"{PREDICTABLES_RP}/{val}_types.csv"
+        if is_type
+        else f"{PREDICTABLES_RP}/{val}.csv"
+    )
+
+
 def load_predictable_csv(
     fmt: "FullModelType",
     usecols: list[str],
 ) -> tuple[pd.DataFrame, "Path"]:
-    path = f"{PREDICTABLES_RP}/{fmt}.csv"
+    path = get_predictable_csv_path(fmt, is_type=False)
     return pd.read_csv(path, usecols=usecols), path
 
 
@@ -25,5 +33,5 @@ def load_types_csv(
     usecols: list[str],
 ) -> tuple[pd.DataFrame, "Path"]:
     """Load cached item types CSV."""
-    path = f"{PREDICTABLES_RP}/{mt}_types.csv"
+    path = get_predictable_csv_path(mt, is_type=True)
     return pd.read_csv(path, usecols=usecols), path

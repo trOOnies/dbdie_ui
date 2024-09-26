@@ -5,7 +5,7 @@ from dbdie_classes.paths import absp, CROPS_MAIN_FD_RP
 import os
 import numpy as np
 import pandas as pd
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from classes.labels_counter import LabelsCounter
 from code.labeler import (
@@ -41,15 +41,15 @@ class Labeler:
         self.matches = matches  # id must be the index
         self.labels = labels  # idem: (match_id, player_id)
 
+        self.fmt = fmt
         self.mt, self.pt, self.ifk = extract_mt_pt_ifk(self.fmt)
         assert_mt_and_pt(self.mt, self.pt)
-        self.fmt = fmt
         self.folder_path = absp(f"{CROPS_MAIN_FD_RP}/{fmt}")
 
         self.columns, self.column_ixs = init_cols(self.mt, self.labels)
 
         total_cells, n_players, n_items = init_dims(self.columns)
-        self.current, self.null_id = init_current(
+        self.current, self.null_id, self.null_name = init_current(
             total_cells,
             n_items,
             self.mt,
@@ -93,7 +93,7 @@ class Labeler:
         """Wrap values as a (n_players, n_items) matrix."""
         return np.array(values).reshape(self.n_players, self.n_items)
 
-    def filename(self, ix: int) -> "Filename" | None:
+    def filename(self, ix: int) -> Optional["Filename"]:
         """Filename of the cell with integer index 'ix'.
         Can have a value between 0 and (total_cells - 1).
         """
@@ -204,8 +204,8 @@ class Labeler:
                 mask_ifk = np.logical_not(mask_ifk)
             data = self.labels[mt][mask_ifk]
 
-        return data[
-            data.index == self.current[["m_id", "player_id"]].apply(
-                lambda row: (row["m_id"], row["player_id"])
-            )
-        ]
+        keys = self.current[["m_id", "player_id"]].apply(
+            lambda row: (row["m_id"], row["player_id"]),
+            axis=1,
+        )
+        return data.loc[keys]

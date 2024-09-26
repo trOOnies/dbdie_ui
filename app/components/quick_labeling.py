@@ -1,6 +1,6 @@
 """Functions for quick_labeling component."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import gradio as gr
 
@@ -18,19 +18,19 @@ from code.quick_labeling import (
 
 if TYPE_CHECKING:
     from classes.gradio import (
-        DropdownDict, ImageBox, ImageDict, LabeledImages, Options
+        DropdownDict, ImageBox, ImageDict, LabeledImages, OptionsList
     )
     from classes.labeler import Labeler
     from classes.labeler_selector import LabelerSelector
 
 
-def images_box(options: "Options", w: int) -> "ImageBox":
+def images_box(options: "OptionsList", w: int) -> "ImageBox":
     """Create function that creates images in a Gradio Row."""
 
     def form_images(
         rcc: str,
         limgs: "LabeledImages",
-    ) -> dict[str, "ImageDict" | "DropdownDict"]:
+    ) -> dict[str, Union["ImageDict", "DropdownDict"]]:
         """Create images in a Gradio Row."""
         with gr.Row(elem_classes=rcc):
             with gr.Column(scale=1, min_width=10, elem_classes="option-col"):
@@ -49,12 +49,12 @@ def images_box(options: "Options", w: int) -> "ImageBox":
             with gr.Column(scale=10, min_width=200, elem_classes="option-col"):
                 dds = {
                     i: gr.Dropdown(
-                        choices=options,
+                        choices=opts,
                         value=vs[1],
                         interactive=True,
                         container=False,
                     )
-                    for i, vs in enumerate(limgs)
+                    for i, (vs, opts) in enumerate(zip(limgs, options))
                 }
 
         return {"images": imgs, "dropdowns": dds}
@@ -63,7 +63,7 @@ def images_box(options: "Options", w: int) -> "ImageBox":
 
 
 def flatten_objs(
-    objs: dict[int, dict[str, "ImageDict" | "DropdownDict"]],
+    objs: dict[int, dict[str, Union["ImageDict", "DropdownDict"]]],
     kind: str,
 ) -> list[gr.Image | gr.Dropdown]:
     return [o for row in objs.values() for o in row[kind].values()]
