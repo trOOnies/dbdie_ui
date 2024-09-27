@@ -2,7 +2,6 @@
 
 from dbdie_classes.options import PLAYER_TYPE
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT
-from dbdie_classes.paths import absp, CROPPED_IMG_FD_RP
 import gradio as gr
 from typing import Any, Optional, TYPE_CHECKING
 
@@ -10,7 +9,7 @@ from api import upload_labels
 from img import rescale_img
 
 if TYPE_CHECKING:
-    from dbdie_classes.base import LabelId, Path
+    from dbdie_classes.base import Filename, LabelId, MatchId, Path
 
 GradioUpdate = dict[str, Any]
 
@@ -30,29 +29,34 @@ def process_fmt(lbl_sel, input_data) -> None:
 
 
 def update_data(
-    labeler,
+    lbl_selector,
     input_data,
     upload: bool,
     go_back: bool,
 ) -> list["LabelId"]:
     if upload:
-        upload_labels(labeler, list(input_data[:labeler.total_cells]))
-        return labeler.next()
+        upload_labels(
+            lbl_selector.labeler,
+            list(input_data[:lbl_selector.labeler.total_cells]),
+        )
+        return lbl_selector.next()  # can include load
     elif go_back:
-        return labeler.next(go_back=True)
+        return lbl_selector.next(go_back=True)  # can include load
     else:
-        return labeler.current["label_id"].to_list()
+        lbl_selector.corr_driven_load()
+        return lbl_selector.labeler.current["label_id"].to_list()
 
 
 def next_info(
     labeler,
     updated_data: list["LabelId"],
-) -> tuple[list[Optional["Path"]], list["LabelId"], Optional["Path"]]:
+) -> tuple[list[Optional["Path"]], list["LabelId"], Optional["MatchId"], Optional["Filename"]]:
     if not labeler.done:
         return (
             labeler.get_crops("jpg"),
             updated_data,
-            absp(f"{CROPPED_IMG_FD_RP}/{labeler.filename(0)}"),  # TODO: Change
+            labeler.current["m_id"][0],  # TODO: Change
+            labeler.filename(0),  # TODO: Change
         )
     else:
         print("LABELING DONE")
@@ -60,17 +64,17 @@ def next_info(
             [None for _ in range(labeler.total_cells)],
             [0 for _ in range(labeler.total_cells)],
             None,
+            None,
         )
 
 
 def update_images(
     crops: list[Optional["Path"]],
-    match_img_path: "Path",
 ) -> list[GradioUpdate]:
+    """Update Gradio predictable images."""
     return [
         gr.update(
             value=rescale_img(img, 120) if isinstance(img, str) else None,
-            label=match_img_path,
             interactive=False,
             height="11em",
             container=False,
@@ -83,9 +87,9 @@ def update_dropdowns(
     labeler_sel,
     updated_data: list["LabelId"],
 ):
-    if labeler_sel.labeler_has_changed:
-        labeler_sel.labeler_has_changed = False
-        print(updated_data)
+    if labeler_sel.options_have_changed:
+        labeler_sel.options_have_changed = False
+        print("UPDATED:", updated_data)
         return [
             gr.update(choices=options, value=label)
             for label, options in zip(updated_data, labeler_sel.options)

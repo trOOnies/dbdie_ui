@@ -3,7 +3,9 @@
 from typing import TYPE_CHECKING, Union
 
 import gradio as gr
+import requests
 
+from api import endp, from_resp_to_image
 from img import rescale_img
 from code.quick_labeling import (
     next_info,
@@ -75,7 +77,11 @@ def empty_fn(*input_data):
     return [gr.update(value=label) for label in updated_data]
 
 
-def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = False):
+def make_label_fn(
+    lbl_sel: "LabelerSelector",
+    upload: bool,
+    go_back: bool = False,
+):
     """Make the main label (button) function.
 
     upload: Toggles the upload and the changing of the labels for the following ones.
@@ -89,6 +95,7 @@ def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = Fals
         
         Flattened input: First 16 images, and then 16 dropdowns.
         """
+        print(f"PROCESSING {lbl_sel.fmt}...")
         assert len(input_data) == lbl_sel.labeler.total_cells + 2
 
         process_fmt(lbl_sel, input_data)
@@ -96,16 +103,24 @@ def make_label_fn(lbl_sel: "LabelerSelector", upload: bool, go_back: bool = Fals
         # Select new current labeler
         labeler = lbl_sel.labeler
 
-        updated_data = update_data(labeler, input_data, upload, go_back)
-        crops, updated_data, match_img_path = next_info(labeler, updated_data)
+        updated_data = update_data(lbl_sel, input_data, upload, go_back)
+        crops, updated_data, match_id, match_filename = next_info(labeler, updated_data)
+        match_img = (
+            from_resp_to_image(requests.get(endp(f"/matches/image/{match_id}")))
+            if match_id is not None
+            else None
+        )
 
-        print("match_img_path:", match_img_path)
-        print(30 * "-")
+        if match_filename is not None:
+            print("Main match:", match_filename)
+            print(30 * "-")
+
+        print(f"PROCESSED {lbl_sel.fmt}.")
 
         return (
-            update_images(crops, match_img_path)
+            update_images(crops)
             + update_dropdowns(lbl_sel, updated_data)
-            + [gr.update(value=match_img_path)]
+            + [gr.update(value=match_img)]
             + update_match_markdown(labeler)
             + toggle_rows_visibility(labeler.done)
             + [gr.update(value=process_tc_info(lbl_sel))]  # training corpus info

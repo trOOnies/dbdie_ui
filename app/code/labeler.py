@@ -1,80 +1,28 @@
 """Labeler class extra code."""
 
-from dbdie_classes.options import MODEL_TYPE as MT
-from dbdie_classes.options import PLAYER_TYPE as PT
-from dbdie_classes.options.FMT import extract_mt_pt_ifk, to_fmt
 from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
 from dbdie_classes.options.NULL_IDS import INT_IDS as NULL_INT_IDS
-from dbdie_classes.options.NULL_IDS import mt_is_null
 from dbdie_classes.options.SQL_COLS import MT_TO_COLS
 import numpy as np
 import pandas as pd
 from typing import TYPE_CHECKING, Optional
 
-from paths import load_predictable_csv, load_types_csv
+from paths import load_predictable_csv
 
 if TYPE_CHECKING:
     from dbdie_classes.base import (
         FullModelType,
         IsForKiller,
+        LabelsDataFrame,
         LabelId,
         LabelName,
         ModelType,
         PlayerId,
-        PlayerType,
     )
 
     from classes.base import CurrentDataFrame
-    from classes.gradio import OptionsList
 
 TOTAL_CELLS = 16
-
-MOST_USED = {
-    MT.ITEM: {
-        PT.SURV: [
-            "Flashlight",
-            "Sport Flashlight",
-            "Utility Flashlight",
-            "Camping Aid Kit",
-            "First Aid Kit",
-            "Emergency Med-Kit",
-            "Ranger Med-Kit",
-            "Worn-Out Tools",
-            "Toolbox",
-            "Commodious Toolbox",
-            "Mechanic's Toolbox",
-            "Alex's Toolbox",
-            "Engineer's Toolbox",
-        ],
-    },
-    MT.OFFERING: {
-        PT.KILLER: [
-            "Survivor Pudding",
-            "Bloody Party Streamers",
-            "Putrid Oak",
-            "Annotated Blueprint",
-            "Bloodied Blueprint",
-            "Torn Blueprint",
-            "Vigo's Blueprint",
-            "Cypress Memento Mori",
-            "Ivory Memento Mori",
-            "Ebony Memento Mori",
-            "Black Ward",
-        ],
-        PT.SURV: [
-            "Bound Envelope",
-            "Escape! Cake",
-            "Bloody Party Streamers",
-            "Sealed Envelope",
-            "Petrified Oak",
-            "Annotated Blueprint",
-            "Bloodied Blueprint",
-            "Torn Blueprint",
-            "Vigo's Blueprint",
-        ],
-    },
-}
-
 
 # * Current pointer management
 
@@ -93,11 +41,7 @@ def init_dims(columns: list[str]) -> tuple[int, int, int]:
     """Initialize labeling dimensions."""
     n_items = len(columns)
     assert TOTAL_CELLS % n_items == 0, "Total cells must be a multiple of n_items"
-    return (
-        TOTAL_CELLS,
-        int(TOTAL_CELLS / n_items),
-        n_items,
-    )
+    return TOTAL_CELLS, int(TOTAL_CELLS / n_items), n_items
 
 
 def init_current(
@@ -210,200 +154,6 @@ def process_matches(
     return c_matches
 
 
-def filter_nulls(
-    options: pd.DataFrame,
-    mt: "ModelType",
-    ifk: "IsForKiller",
-) -> tuple[pd.DataFrame, str]:
-    """Filter special LabelIds that represent nulls."""
-    mt_null_col = NULL_IDS_BY_MT[mt][int(ifk)]
-    mt_wrong_null_col = NULL_IDS_BY_MT[mt][1 - int(ifk)]
-    options = options[options["name"] != mt_wrong_null_col]
-    return options, mt_null_col
-
-
-def add_types(options: pd.DataFrame, mt: "ModelType") -> pd.DataFrame:
-    """Add item types to the 'options' DataFrame."""
-    options_types, _ = load_types_csv(mt, usecols=["id", "emoji", "is_for_killer"])
-    options_types.columns = ["type_id", "emoji", "is_for_killer"]
-    return pd.merge(options, options_types, how="left", on="type_id")
-
-
-def base_options(options: pd.DataFrame, labeler) -> "OptionsList":
-    """Get base options, provided that there is no defined correlation between FMTs."""
-    return [options.str_value.to_list() for _ in range(labeler.total_cells)]
-
-
-def correlated_options(
-    options: pd.DataFrame,
-    labeler,
-    fmt: "FullModelType",
-    precond_mt: "ModelType",
-    uniqueness: bool,
-) -> "OptionsList":
-    """Get options when there is a defined correlation between FMTs."""
-    print(fmt)
-    mt, _, _ = extract_mt_pt_ifk(fmt)
-
-    precond_data: pd.Series = labeler.filter_fmt_with_current(
-        to_fmt(precond_mt, True)
-    )
-    mask_precond = ~mt_is_null(precond_data, precond_mt)
-    if not mask_precond.any():
-        return base_options(options, labeler)
-
-    precond_ids = precond_data[mask_precond].astype(int).unique()
-
-    item_id_col = "power_id" if mt == MT.CHARACTER else "item_id"
-    df, _ = load_predictable_csv(
-        fmt,
-        usecols=(
-            ["id", "rarity_id", "name", item_id_col]
-            if mt in MT.WITH_TYPES
-            else ["id", "emoji", "name", item_id_col]
-        ),
-    )
-
-    df = df[df[item_id_col].notnull()].astype({item_id_col: int})
-
-    df = df[df[item_id_col].isin(precond_ids)]
-
-    # Rarity
-    if mt in MT.WITH_TYPES:
-        df_rarity, _ = load_predictable_csv("rarity", usecols=["id", "emoji"])
-        df_rarity = df_rarity.rename({"id": "rarity_id"}, axis=1)
-        df = pd.merge(df, df_rarity, on="rarity_id", how="left")
-        df = df.sort_values(["rarity_id", "id"])
-        df = df.drop("rarity_id", axis=1)
-
-    # Item type
-    # if mt in MT.WITH_TYPES:
-    #     df_types, _ = load_types_csv(mt, usecols=["id", "emoji"])
-    #     df_types = df_types.rename({"id": "type_id"}, axis=1)
-    #     df = pd.merge(df, df_types, on="type_id", how="left").drop("type_id", axis=1)
-
-    df = pd.concat(
-        (
-            pd.DataFrame(
-                [[labeler.null_id, labeler.null_name, 0, "❌"]],
-                columns=["id", "name", "item_id", "emoji"],
-            ),
-            df,
-        ),
-        axis=0,
-        ignore_index=True,
-    )
-    df = df.set_index(item_id_col, drop=True, verify_integrity=uniqueness)
-
-    id_col = "base_char_id" if mt == MT.CHARACTER else "id"
-    df["ui_name"] = df.apply(
-        lambda row: (row["emoji"] + " " + row["name"], row[id_col]),
-        axis=1,
-    )
-
-    if uniqueness:
-        return [
-            [df.at[int(pc_val), "ui_name"]]
-            if pc
-            else options.str_value.to_list()
-            for pc, pc_val in zip(mask_precond, precond_data)
-        ]
-    else:
-        return [
-            [df["ui_name"].iat[0]] + df.loc[int(pc_val), "ui_name"].to_list()
-            if pc
-            else options.str_value.to_list()
-            for pc, pc_val in zip(mask_precond, precond_data)
-        ]
-
-
-def filter_correlated_mts(
-    options: pd.DataFrame,
-    mt: "ModelType",
-    ifk: "IsForKiller",
-    labeler,
-) -> "OptionsList":
-    conds = {
-        "killer character": ifk and (mt == MT.CHARACTER),
-        "killer addons": ifk and (mt == MT.ADDONS),
-        "surv addons": (not ifk) and (mt == MT.ADDONS),
-    }
-    if not any(conds.values()):
-        return base_options(options, labeler)
-
-    fmt = to_fmt(mt, ifk)
-    if conds["killer character"]:  # if item is filled, set characters (base and legendaries)
-        return correlated_options(
-            options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False
-        )
-    elif conds["killer addons"]:  # if item is filled, set addons
-        return correlated_options(
-            options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False
-        )
-    elif conds["surv addons"]:  # if item is filled, set addons
-        return correlated_options(
-            options, labeler, fmt, precond_mt=MT.ITEM, uniqueness=False
-        )
-    else:
-        raise Exception("Correlation MT condition not mapped by the ifs.")
-
-
-def process_options(options: pd.DataFrame, ifk: "IsForKiller") -> pd.DataFrame:
-    """Process options DataFrame."""
-    options = options[
-        options["is_for_killer"].isnull() |
-        (options["is_for_killer"] == ifk)
-    ]
-    options = options.drop("is_for_killer", axis=1)
-
-    options["emoji"] = options["emoji"].fillna("❓")
-
-    return options.sort_values(["type_id", "name"])
-
-
-def reorder_mu(
-    options: pd.DataFrame,
-    mt: "ModelType",
-    pt: "PlayerType",
-    mt_null_col: str,
-) -> pd.DataFrame:
-    """Reorder most used items."""
-    if mt in MOST_USED and pt in MOST_USED[mt]:
-        options = options.set_index("name", drop=True)
-        most_used_df = options.loc[[mt_null_col] + MOST_USED[mt][pt]]
-        options = pd.concat(
-            (
-                most_used_df,
-                options[~options.index.isin(most_used_df.index.values)]
-            ),
-            axis=0,
-        )
-        options = options.reset_index(drop=False)
-    return options
-
-
-def reorder_lu_and_np(
-    options: pd.DataFrame,
-    mt: "ModelType",
-    ifk: "IsForKiller",
-) -> pd.DataFrame:
-    """Reorder least used and non-possible item types."""
-    if mt == MT.ITEM:
-        mask = options["type_id"] == 7
-    elif mt == MT.ADDONS and not ifk:
-        mask = options["type_id"].isin([3, 4, 7])
-    elif mt == MT.OFFERING:
-        mask = options["type_id"].isin([3, 6, 9, 12, 13])
-    else:
-        return options
-
-    return pd.concat(
-        (options[~mask], options[mask]),
-        axis=0,
-        ignore_index=True,
-    )
-
-
 # * Functions
 
 
@@ -426,51 +176,44 @@ def update_current(lbl, update_match: bool) -> "CurrentDataFrame":
     )
 
 
-def options_with_types(labeler) -> "OptionsList":
-    """Get current labeler's options if the model type item has item types."""
-    mt = labeler.mt
-    ifk = labeler.ifk
-    pt = PT.ifk_to_pt(ifk)
-
-    # Options as DataFrame
-    options, _ = load_predictable_csv(to_fmt(mt, ifk), usecols=["name", "id", "type_id"])
-    options, mt_null_col = filter_nulls(options, mt, ifk)
-
-    options = add_types(options, mt)
-    options = process_options(options, ifk)
-
-    options = reorder_mu(options, mt, pt, mt_null_col)
-    options = reorder_lu_and_np(options, mt, ifk)
-
-    options["str_value"] = options.apply(
-        lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
-        axis=1,
-    )
-    options = options.drop("emoji", axis=1)
-
-    # Options as list[DataFrame]
-    return filter_correlated_mts(options, mt, ifk, labeler)
+# * Other predictables
 
 
-def options_wo_types(
+def prefilter_data(
+    labels: "LabelsDataFrame",
     mt: "ModelType",
     ifk: "IsForKiller",
-    total_cells: int,
-) -> "OptionsList":
-    """Get current labeler's options if the model type item doesn't have item types."""
-    fmt = to_fmt(mt, ifk)
+) -> pd.Series:
+    """Filter data so as to make the index filtering more efficient."""
+    if ifk is None:
+        return labels[mt]
+    else:
+        mask_ifk = labels.index.get_level_values(1) == 4
+        if not ifk:
+            mask_ifk = np.logical_not(mask_ifk)
+        return labels[mt][mask_ifk]
 
-    try:
-        options, _ = load_predictable_csv(fmt, usecols=["emoji", "name", "id"])
-        options = options.apply(
-            lambda row: (f"{row['emoji']} {row['name']}", row["id"]),
-            axis=1,
-        )
-    except (KeyError, ValueError):
-        options, _ = load_predictable_csv(fmt, usecols=["name", "id"])
-        options = options.apply(
-            lambda row: (f"{row['name']}", row["id"]),
-            axis=1,
-        )
 
-    return [options.to_list() for _ in range(total_cells)]
+def filter_data(data: pd.Series, current: "CurrentDataFrame") -> pd.Series:
+    keys = current[["m_id", "player_id"]].apply(
+        lambda row: (row["m_id"], row["player_id"]),
+        axis=1,
+    )
+    result = data.loc[keys]
+    return result.astype(int)
+
+
+def merge_with_types(
+    result: pd.Series,
+    types: bool,
+    fmt: "FullModelType",
+    mt: "ModelType",
+) -> pd.Series:
+    if types:
+        df_types, _ = load_predictable_csv(fmt, usecols=["id", "type_id"])
+        df_types = df_types.rename({"id": mt}, axis=1)
+        result = pd.merge(result, df_types, how="left", on=mt)
+        result = result.drop(mt, axis=1)
+        result = result.rename({"type_id": mt}, axis=1)
+        result = result[mt]
+    return result

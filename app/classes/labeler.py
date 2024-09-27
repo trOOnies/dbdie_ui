@@ -9,10 +9,13 @@ from typing import TYPE_CHECKING, Optional
 
 from classes.labels_counter import LabelsCounter
 from code.labeler import (
+    filter_data,
     init_cols,
     init_dims,
     init_current,
     init_pending,
+    merge_with_types,
+    prefilter_data,
     update_current,
 )
 
@@ -106,10 +109,7 @@ class Labeler:
         """
         assert player_ix >= 0
         ix = player_ix * self.n_items  # min_ix is enough
-        return (
-            int(self.current["m_id"].iat[ix]),
-            int(self.current["player_id"].iat[ix]),
-        )
+        return int(self.current["m_id"].iat[ix]), int(self.current["player_id"].iat[ix])
 
     # * Images
 
@@ -190,22 +190,17 @@ class Labeler:
 
     # * Other predictables
 
-    def filter_fmt_with_current(self, fmt: "FullModelType") -> pd.Series:
+    def filter_fmt_with_current(
+        self,
+        fmt: "FullModelType",
+        types: bool,
+    ) -> pd.Series:
         """Filter another fmt with the current info of the labeler's fmt."""
         assert fmt != self.fmt
         mt, _, ifk = extract_mt_pt_ifk(fmt)
 
-        # Filter data so as to make the index filtering more efficient
-        if ifk is None:
-            data = self.labels[mt]
-        else:
-            mask_ifk = self.labels.index.get_level_values(1) == 4
-            if not ifk:
-                mask_ifk = np.logical_not(mask_ifk)
-            data = self.labels[mt][mask_ifk]
+        data = prefilter_data(self.labels, mt, ifk)
+        result = filter_data(data, self.current)
+        result = merge_with_types(result, types, fmt, mt)
 
-        keys = self.current[["m_id", "player_id"]].apply(
-            lambda row: (row["m_id"], row["player_id"]),
-            axis=1,
-        )
-        return data.loc[keys]
+        return result

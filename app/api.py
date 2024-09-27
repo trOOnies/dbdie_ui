@@ -3,8 +3,10 @@
 import os
 
 from dbdie_classes.options.FMT import to_fmt
-from dbdie_classes.options.MODEL_TYPE import CHARACTER, TO_ID_NAMES, WITH_TYPES
+from dbdie_classes.options.MODEL_TYPE import CHARACTER, ITEM, TO_ID_NAMES, WITH_TYPES
+from io import BytesIO
 import pandas as pd
+from PIL import Image
 import requests
 from typing import TYPE_CHECKING
 
@@ -13,6 +15,8 @@ from paths import get_predictable_csv_path, load_predictable_csv, load_types_csv
 
 if TYPE_CHECKING:
     from dbdie_classes.base import IsForKiller, LabelId, ModelType, Path
+    from PIL import ImageFile
+
     from classes.labeler import Labeler
 
 
@@ -36,12 +40,12 @@ def cache_from_endpoint(endpoint: str) -> None:
     items = requests.get(endp(endpoint))
     assert items.status_code == 200
     df = pd.DataFrame(items.json())
-    df.to_csv(get_predictable_csv_path("rarity", is_type=False), index=False)
+    df.to_csv(get_predictable_csv_path(endpoint, is_type=False), index=False)
 
 
 def get_items(
     mt: "ModelType",
-    is_for_killer: bool,
+    ifk: bool,
     local_fallback: bool,
     is_type: bool,
     clean_f,
@@ -53,7 +57,7 @@ def get_items(
             ifk_key = "is_killer" if mt == CHARACTER else "is_for_killer"
             items = requests.get(
                 endp(f"/{mt}"),
-                params={ifk_key: is_for_killer, "limit": 10_000},
+                params={ifk_key: ifk, "limit": 10_000},
             )
 
         if items.status_code != 200:
@@ -69,7 +73,7 @@ def get_items(
                 df, path = (
                     load_types_csv(mt)
                     if is_type
-                    else load_predictable_csv(to_fmt(mt, is_for_killer))
+                    else load_predictable_csv(to_fmt(mt, ifk))
                 )
                 print("Local data loaded successfully.")
                 return df, path
@@ -82,7 +86,7 @@ def get_items(
     path = (
         get_predictable_csv_path(mt, is_type=True)
         if is_type
-        else get_predictable_csv_path(to_fmt(mt, is_for_killer), is_type=False)
+        else get_predictable_csv_path(to_fmt(mt, ifk), is_type=False)
     )
 
     return items, path
@@ -90,24 +94,26 @@ def get_items(
 
 def cache_function(
     mt: "ModelType",
-    is_for_killer: "IsForKiller",
+    ifk: "IsForKiller",
     clean_f,
     local_fallback: bool,
 ) -> None:
     """Get predictables from the API and cache."""
     items, path = get_items(
         mt,
-        is_for_killer,
+        ifk,
         local_fallback,
         is_type=False,
         clean_f=clean_f,
     )
+    if mt == ITEM:
+        items = items[~(items["type_id"] == 7)]
     items.to_csv(path, index=False)
 
     if mt in WITH_TYPES:
         item_types, path_types = get_items(
             mt,
-            is_for_killer,
+            ifk,
             local_fallback,
             is_type=True,
             clean_f=clean_f,
@@ -118,10 +124,8 @@ def cache_function(
 def upload_labels(labeler: "Labeler", labels: list["LabelId"]) -> None:
     """Upload labels set by the user."""
     if labeler.current["label_id"].to_list() != labels:
-        print("LABELS WERE CHANGED")
-        print(labeler.current["label_id"].to_list())
-        print(labels)
         labeler.update_current(labels)
+        print("Labels uploaded.")
 
     labels_wrapped = labeler.wrap(labels)
 
@@ -147,3 +151,8 @@ def upload_labels(labeler: "Labeler", labels: list["LabelId"]) -> None:
             except requests.exceptions.JSONDecodeError:
                 msg = resp.reason
             raise Exception(msg)
+
+
+def from_resp_to_image(resp: requests.models.Response) -> "ImageFile":
+    """Convert from response to PIL Image."""
+    return Image.open(BytesIO(resp.content))

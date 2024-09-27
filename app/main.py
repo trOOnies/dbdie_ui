@@ -37,9 +37,9 @@ def main() -> None:
         for mt in ALL_MT_MULT
         for ifk in [False, True]
     }
-    labeler_orch = LabelerSelector(labelers)
+    labeler_sel = LabelerSelector(labelers)
 
-    ui = create_ui(CSS, labeler_orch)
+    ui = create_ui(CSS, labeler_sel)
     ui.launch()
 
 

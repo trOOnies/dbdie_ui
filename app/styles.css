@@ -8,19 +8,19 @@
     align-items: center !important;
 }
 .second-row {
-    background-color: light-dark(hwb(59 67% 5%), hwb(59 67% 15%)) !important;
+    background-color: light-dark(hwb(59 67% 5%), hwb(59 47% 35%)) !important;
     padding: 0px !important;
     margin: 0px !important;
     align-items: center !important;
 }
 .third-row {
-    background-color: light-dark(hwb(84 40% 11%), hwb(84 40% 21%)) !important;
+    background-color: light-dark(hwb(84 40% 11%), hwb(84 40% 41%)) !important;
     padding: 0px !important;
     margin: 0px !important;
     align-items: center !important;
 }
 .fourth-row {
-    background-color: light-dark(hwb(195 53% 14%), hwb(195 53% 24%)) !important;
+    background-color: light-dark(hwb(195 53% 14%), hwb(195 23% 34%)) !important;
     padding: 0px !important;
     margin: 0px !important;
     align-items: center !important;

@@ -23,11 +23,11 @@ if TYPE_CHECKING:
 
 def create_ui(
     css: str,
-    labeler_orch: "LabelerSelector",
+    labeler_sel: "LabelerSelector",
 ) -> gr.Blocks:
     """Create the Gradio Blocks-based UI."""
     # Select current labeler
-    labeler = labeler_orch.labeler
+    labeler = labeler_sel.labeler
 
     with gr.Blocks(title="DBDIE", fill_width=True, css=css) as ui:
         gr.Markdown("# DBDIE UI with Gradio")
@@ -55,7 +55,7 @@ def create_ui(
             with gr.Row(visible=not labeler.done) as ql_labeling_row:
                 with gr.Column():
                     PERK_W = 220
-                    perks_box = images_box(labeler_orch.options, PERK_W)
+                    perks_box = images_box(labeler_sel.options, PERK_W)
                     limgs = labeler.get_limgs("jpg")
                     perks_objs = {
                         i: perks_box(rcc, limgs[4 * i : 4 * (i+1)])
@@ -108,8 +108,8 @@ def create_ui(
             tc_info,
         ]
 
-        label_fn = make_label_fn(labeler_orch, upload=True)
-        prev_fn = make_label_fn(labeler_orch, upload=False, go_back=True)
+        label_fn = make_label_fn(labeler_sel, upload=True)
+        prev_fn = make_label_fn(labeler_sel, upload=False, go_back=True)
 
         ql_dict["previous_btt"].click(
             prev_fn,
@@ -133,7 +133,7 @@ def create_ui(
             outputs=inf_ta,
         )
 
-        change_fn = make_label_fn(labeler_orch, upload=False)
+        change_fn = make_label_fn(labeler_sel, upload=False)
 
         mt_dd.change(
             change_fn,
@@ -148,7 +148,7 @@ def create_ui(
 
         # * Load actions
 
-        sync_labels_fn = make_label_fn(labeler_orch, upload=False)
+        sync_labels_fn = make_label_fn(labeler_sel, upload=False)
 
         ui.load(
             sync_labels_fn,

@@ -8,7 +8,8 @@ from dbdie_classes.options.PLAYER_TYPE import pt_to_ifk, SURV
 from typing import TYPE_CHECKING
 
 from classes.labels_counter import LabelsCounter
-from code.labeler import (
+from code.fmt_correl import get_fmt_correlation_dict
+from code.labeler_selector import (
     options_with_types,
     options_wo_types,
 )
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from dbdie_classes.base import (
         FullModelType,
         IsForKiller,
+        LabelId,
         PlayerType,
         ModelType,
     )
@@ -41,9 +43,9 @@ class LabelerSelector:
         for lbl in self.labelers.values():
             lbl.next()
 
-        self.labeler_has_changed = False
+        self.options_have_changed = False
         self.load()
-        self.labeler_has_changed = False  # Turn off after initial load
+        self.options_have_changed = False  # Turn off after initial load
 
     @property
     def fmt(self) -> "FullModelType":
@@ -91,14 +93,28 @@ class LabelerSelector:
 
     def load(self) -> None:
         """Load current predictables from the cache."""
-        assert not self.labeler_has_changed
-        self.labeler_has_changed = True
+        print("LOADING OPTIONS...")
+        self.options_have_changed = True
 
         self.options: "OptionsList" = (
             options_with_types(self.labeler)
             if self.mt in WITH_TYPES
-            else options_wo_types(self.mt, self.ifk, self.labeler.total_cells)
+            else options_wo_types(self.labeler, self.mt, self.ifk)
         )
+
+    def corr_driven_load(self) -> None:
+        """Run load() method when there is a set correlation between FMTs."""
+        fmt_corr_dict = get_fmt_correlation_dict(self.mt, self.ifk)
+        if any(fmt_corr_dict.values()):
+            self.load()
+
+    def next(self, go_back: bool = False) -> list["LabelId"]:
+        """Invoke current Labeler's next() method and run set correlations.
+        Returns the next label ids.
+        """
+        next_label_ids = self.labeler.next(go_back=go_back)
+        self.corr_driven_load()
+        return next_label_ids
 
     def get_all_labels_counters(self) -> dict["ModelType", list[LabelsCounter]]:
         """Get all labelers' LabelCounters.

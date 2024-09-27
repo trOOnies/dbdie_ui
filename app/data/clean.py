@@ -8,12 +8,12 @@ if TYPE_CHECKING:
     from dbdie_classes.base import IsForKiller, ModelType
 
 
-def make_clean_function(model_type: "ModelType", is_for_killer: "IsForKiller"):
+def make_clean_function(mt: "ModelType", ifk: "IsForKiller"):
     def clean_item(item_json: list[dict]) -> pd.DataFrame:
         """Clean raw item."""
         item = pd.DataFrame(item_json)
 
-        mask = item["name"].isin(NULL_IDS_BY_MT[model_type])
+        mask = item["name"].isin(NULL_IDS_BY_MT[mt])
         item = pd.concat(
             (
                 item[mask],
