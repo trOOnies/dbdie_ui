@@ -4,4 +4,4 @@ from pandas import DataFrame
 
 MatchesDataFrame = DataFrame  # index = id
 LabelsDataFrame = DataFrame  # index = (match_id, player_id)
-CurrentDataFrame = DataFrame  # cols: m_id, m_filename, m_match_date, m_dbd_version, label_id, player_id, item_id
+CurrentDataFrame = DataFrame  # cols: m_id, m_filename, m_match_date, m_dbdv_id, label_id, player_id, item_id

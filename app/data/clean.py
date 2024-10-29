@@ -1,6 +1,6 @@
 """Code for the clean data phase."""
 
-from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
+from dbdie_classes.options.NULL_IDS import BY_MT as NULL_IDS_BY_MT
 import pandas as pd
 from typing import TYPE_CHECKING
 

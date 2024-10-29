@@ -39,6 +39,9 @@ def main() -> None:
     }
     labeler_sel = LabelerSelector(labelers)
 
+    with open("app/ascii_art.txt") as f:
+        print(f.read())
+
     ui = create_ui(CSS, labeler_sel)
     ui.launch()
 

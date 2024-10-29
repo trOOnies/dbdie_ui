@@ -108,7 +108,7 @@ def update_match_markdown(labeler) -> list[GradioUpdate]:
                 [
                     f"🖼️ ({curr['m_id']}) {curr['m_filename']}",
                     f"📅 {curr['m_match_date']}",
-                    f"🆚 {curr['m_dbd_version']}",
+                    f"🆚 {curr['m_dbdv_id']}",
                 ]  # TODO: Change
             )
             if not labeler.done

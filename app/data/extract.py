@@ -1,24 +1,20 @@
 """Code for the extract data phase."""
 
-from dbdie_classes.options.SQL_COLS import MANUALLY_CHECKED_COLS
-import requests
 import pandas as pd
 
-from api import endp
+from dbdie_classes.options.MODEL_TYPE import TO_ID_NAMES as MT_TO_ID_NAMES
+from dbdie_classes.options.SQL_COLS import MANUALLY_CHECKED_COLS
+
+from api import getr, postr
 from paths import IMG_REF_RP
 
 
 def get_matches_and_labels() -> tuple[list[dict], list[dict]]:
     """Get matches and labels from the API."""
-    matches = requests.get(endp("/matches"), params={"limit": 3000})
-    if matches.status_code != 200:
-        raise Exception(matches.reason)
-
-    labels = requests.get(endp("/labels"), params={"limit": 3000})
-    if labels.status_code != 200:
-        raise Exception(labels.reason)
-
-    return matches.json(), labels.json()
+    return (
+        getr("/matches", params={"limit": 3_000}),
+        postr("/labels/filter-many", params={"limit": 30_000}),
+    )
 
 
 def process_matches(matches_json: list[dict]) -> pd.DataFrame:
@@ -26,13 +22,11 @@ def process_matches(matches_json: list[dict]) -> pd.DataFrame:
     matches = pd.DataFrame(
         [
             {k: v for k, v in m.items()
-            if k in ["id", "filename", "match_date", "dbd_version"]}
+            if k in ["id", "filename", "match_date", "dbdv_id"]}
             for m in matches_json
         ]
     )
-
-    matches["dbd_version_id"] = matches["dbd_version"].map(lambda v: v["id"])
-    matches["dbd_version"] = matches["dbd_version"].map(lambda v: v["name"])
+    assert not matches.empty
 
     matches = matches.sort_values("id")
     matches = matches.set_index("id", drop=True)
@@ -47,6 +41,7 @@ def process_labels(labels_json: list[dict]) -> pd.DataFrame:
             for lbl in labels_json
         ]
     )
+    assert not labels.empty
 
     labels["manual_checks"] = labels["manual_checks"].map(lambda v: v["predictables"])
     for c in MANUALLY_CHECKED_COLS:
@@ -57,22 +52,16 @@ def process_labels(labels_json: list[dict]) -> pd.DataFrame:
 
     # Extract info from player
     labels["player_id"] = labels["player"].map(lambda pl: pl["id"])
-    labels["character"] = labels["player"].map(lambda pl: pl["character_id"])
-    labels["perks"] = labels["player"].map(lambda pl: pl["perk_ids"])
-    labels["item"] = labels["player"].map(lambda pl: pl["item_id"])
-    labels["addons"] = labels["player"].map(lambda pl: pl["addon_ids"])
-    labels["offering"] = labels["player"].map(lambda pl: pl["offering_id"])
-    labels["status"] = labels["player"].map(lambda pl: pl["status_id"])
-    labels["points"] = labels["player"].map(lambda pl: pl["points"])
-    labels["prestige"] = labels["player"].map(lambda pl: pl["prestige"])
+    for mt, id_name in MT_TO_ID_NAMES.items():
+        labels[mt] = labels["player"].map(lambda pl: pl[id_name])
     labels = labels.drop("player", axis=1)
 
     for i in range(4):
-        labels[f"perk_{i}"] = labels["perks"].map(lambda ps: ps[i] if ps is not None else None)
+        labels[f"perks_{i}"] = labels["perks"].map(lambda ps: ps[i] if ps is not None else None)
     labels = labels.drop("perks", axis=1)
 
     for i in range(2):
-        labels[f"addon_{i}"] = labels["addons"].map(lambda ps: ps[i] if ps is not None else None)
+        labels[f"addons_{i}"] = labels["addons"].map(lambda ps: ps[i] if ps is not None else None)
     labels = labels.drop("addons", axis=1)
 
     labels = labels.sort_values(["match_id", "player_id"])

@@ -1,6 +1,6 @@
 """Labeler class extra code."""
 
-from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
+from dbdie_classes.options.NULL_IDS import BY_MT as NULL_IDS_BY_MT
 from dbdie_classes.options.NULL_IDS import INT_IDS as NULL_INT_IDS
 from dbdie_classes.options.SQL_COLS import MT_TO_COLS
 import numpy as np
@@ -61,7 +61,7 @@ def init_current(
                 "m_id": np.copy(minus_one_vals),
                 "m_filename": np.copy(empty_str_vals),
                 "m_match_date": np.copy(empty_str_vals),
-                "m_dbd_version": np.copy(empty_str_vals),
+                "m_dbdv_id": np.copy(minus_one_vals),
                 "label_id": np.full(total_cells, null_id),
                 "player_id": np.copy(minus_one_vals),
                 "item_id": np.fromiter(
@@ -134,7 +134,7 @@ def process_matches(
     update_match: bool,
 ) -> pd.DataFrame:
     """Process matches function for 'update_current'."""
-    m_cols = ["filename", "match_date", "dbd_version"]
+    m_cols = ["filename", "match_date", "dbdv_id"]
     m_cols_ext = ["id"] + m_cols
 
     if update_match:

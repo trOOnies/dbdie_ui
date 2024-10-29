@@ -3,9 +3,9 @@
 from dbdie_classes.options import KILLER_FMT
 from dbdie_classes.options import MODEL_TYPE as MT
 from dbdie_classes.options import SURV_FMT
-from dbdie_classes.options.FMT import extract_mt_pt_ifk
+from dbdie_classes.options.FMT import from_fmt
 from dbdie_classes.options.NULL_IDS import mt_is_null
-from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
+from dbdie_classes.options.NULL_IDS import BY_MT as NULL_IDS_BY_MT
 import pandas as pd
 from typing import TYPE_CHECKING
 
@@ -155,8 +155,8 @@ def correlated_options(
     uniqueness: bool,
 ) -> "OptionsList":
     """Get options when there is a defined correlation between FMTs."""
-    mt, _, ifk = extract_mt_pt_ifk(fmt)
-    precond_mt, _, _ = extract_mt_pt_ifk(precond_fmt)
+    mt, _, ifk = from_fmt(fmt)
+    precond_mt, _, _ = from_fmt(precond_fmt)
 
     precond_data: pd.Series = labeler.filter_fmt_with_current(
         precond_fmt,

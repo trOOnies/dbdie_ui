@@ -1,6 +1,6 @@
 """Labeler class code."""
 
-from dbdie_classes.options.FMT import assert_mt_and_pt, extract_mt_pt_ifk
+from dbdie_classes.options.FMT import assert_mt_and_pt, from_fmt
 from dbdie_classes.paths import absp, CROPS_MAIN_FD_RP
 import os
 import numpy as np
@@ -45,7 +45,7 @@ class Labeler:
         self.labels = labels  # idem: (match_id, player_id)
 
         self.fmt = fmt
-        self.mt, self.pt, self.ifk = extract_mt_pt_ifk(self.fmt)
+        self.mt, self.pt, self.ifk = from_fmt(self.fmt)
         assert_mt_and_pt(self.mt, self.pt)
         self.folder_path = absp(f"{CROPS_MAIN_FD_RP}/{fmt}")
 
@@ -197,7 +197,7 @@ class Labeler:
     ) -> pd.Series:
         """Filter another fmt with the current info of the labeler's fmt."""
         assert fmt != self.fmt
-        mt, _, ifk = extract_mt_pt_ifk(fmt)
+        mt, _, ifk = from_fmt(fmt)
 
         data = prefilter_data(self.labels, mt, ifk)
         result = filter_data(data, self.current)

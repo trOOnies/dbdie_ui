@@ -1,7 +1,7 @@
 """LabelerSelector class code."""
 
 from copy import deepcopy
-from dbdie_classes.options.FMT import assert_mt_and_pt, extract_mt_pt_ifk, to_fmt
+from dbdie_classes.options.FMT import assert_mt_and_pt, from_fmt, to_fmt
 from dbdie_classes.options.MODEL_TYPE import PERKS, WITH_TYPES
 from dbdie_classes.options.MODEL_TYPE import ALL_MULTIPLE_CHOICE as ALL_MT_MULT
 from dbdie_classes.options.PLAYER_TYPE import pt_to_ifk, SURV
@@ -54,7 +54,7 @@ class LabelerSelector:
 
     @fmt.setter
     def fmt(self, value: "FullModelType") -> None:
-        self._mt, self._pt, self._ifk = extract_mt_pt_ifk(value)
+        self._mt, self._pt, self._ifk = from_fmt(value)
         assert_mt_and_pt(self._mt, self._pt)
         self._fmt = value
         self.load()

@@ -5,7 +5,7 @@ from dbdie_classes.options import KILLER_FMT
 from dbdie_classes.options import MODEL_TYPE as MT
 from dbdie_classes.options import SURV_FMT
 from dbdie_classes.options.FMT import to_fmt
-from dbdie_classes.options.NULL_IDS import BY_MODEL_TYPE as NULL_IDS_BY_MT
+from dbdie_classes.options.NULL_IDS import BY_MT as NULL_IDS_BY_MT
 import pandas as pd
 from typing import TYPE_CHECKING
 
@@ -29,8 +29,8 @@ if TYPE_CHECKING:
 # * Add types functions
 
 
-def merge_is_for_killer(mt: "ModelType", options: pd.DataFrame) -> pd.DataFrame:
-    options_types, _ = load_types_csv(mt, usecols=["id", "is_for_killer"])
+def merge_ifk(mt: "ModelType", options: pd.DataFrame) -> pd.DataFrame:
+    options_types, _ = load_types_csv(mt, usecols=["id", "ifk"])
     options_types = options_types.rename({"id": "type_id"}, axis=1)
     return pd.merge(options, options_types, how="left", on="type_id")
 
@@ -53,10 +53,10 @@ def merge_killer_emojis(merged_opt: pd.DataFrame) -> pd.DataFrame:
 def add_types(options: pd.DataFrame, mt: "ModelType", ifk: "IsForKiller") -> pd.DataFrame:
     """Add item types to the 'options' DataFrame."""
     if (mt == MT.ITEM) and ifk:
-        merged_opt = merge_is_for_killer(mt, options)
+        merged_opt = merge_ifk(mt, options)
         merged_opt = merge_killer_emojis(merged_opt)
     else:
-        options_types, _ = load_types_csv(mt, usecols=["id", "emoji", "is_for_killer"])
+        options_types, _ = load_types_csv(mt, usecols=["id", "emoji", "ifk"])
         options_types = options_types.rename({"id": "type_id"}, axis=1)
         merged_opt = pd.merge(options, options_types, how="left", on="type_id")
 
@@ -80,8 +80,8 @@ def filter_nulls(
 
 def process_options(options: pd.DataFrame, ifk: "IsForKiller") -> pd.DataFrame:
     """Process options DataFrame."""
-    options = options[options["is_for_killer"].isnull() | (options["is_for_killer"] == ifk)]
-    options = options.drop("is_for_killer", axis=1)
+    options = options[options["ifk"].isnull() | (options["ifk"] == ifk)]
+    options = options.drop("ifk", axis=1)
 
     options["emoji"] = options["emoji"].fillna("❓")
 

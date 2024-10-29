@@ -1,26 +1,29 @@
 """API related functions."""
 
-import os
-
-from dbdie_classes.options.FMT import to_fmt
-from dbdie_classes.options.MODEL_TYPE import CHARACTER, ITEM, TO_ID_NAMES, WITH_TYPES
 from io import BytesIO
+import os
 import pandas as pd
 from PIL import Image
 import requests
 from typing import TYPE_CHECKING
 
+from dbdie_classes.options.FMT import to_fmt
+from dbdie_classes.options.MODEL_TYPE import CHARACTER, ITEM, TO_ID_NAMES, WITH_TYPES
+
 from code.api import extract_player_info
 from paths import get_predictable_csv_path, load_predictable_csv, load_types_csv
 
 if TYPE_CHECKING:
-    from dbdie_classes.base import IsForKiller, LabelId, ModelType, Path
     from PIL import ImageFile
+
+    from dbdie_classes.base import (
+        Endpoint, FullEndpoint, IsForKiller, LabelId, ModelType, Path
+    )
 
     from classes.labeler import Labeler
 
 
-def endp(endpoint: str) -> str:
+def endp(endpoint: "Endpoint") -> "FullEndpoint":
     """Get full URL of the endpoint."""
     return f"{os.environ['FASTAPI_HOST']}/{endpoint}"
 
@@ -32,11 +35,39 @@ def parse_or_raise(resp, exp_status_code: int = 200):
             msg = resp.json()
         except requests.exceptions.JSONDecodeError:
             msg = resp.reason
-        raise Exception(msg)
+            raise Exception(msg)
     return resp.json()
 
 
-def cache_from_endpoint(endpoint: str) -> None:
+# * Simpler HTTP requests
+
+
+def getr(endpoint: "Endpoint", **kwargs):
+    """Include the boilerplate for a GET request."""
+    return parse_or_raise(
+        requests.get(endp(endpoint), **kwargs)
+    )
+
+
+def postr(endpoint: "Endpoint", **kwargs):
+    """Include the boilerplate for a POST request."""
+    return parse_or_raise(
+        requests.post(endp(endpoint), **kwargs),
+        exp_status_code=201,  # HTTP_201_CREATED
+    )
+
+
+def putr(endpoint: "Endpoint", **kwargs):
+    """Include the boilerplate for a PUT request."""
+    return parse_or_raise(
+        requests.put(endp(endpoint), **kwargs)
+    )
+
+
+# * Other functions
+
+
+def cache_from_endpoint(endpoint: "Endpoint") -> None:
     items = requests.get(endp(endpoint))
     assert items.status_code == 200
     df = pd.DataFrame(items.json())
@@ -54,10 +85,9 @@ def get_items(
         if is_type:
             items = requests.get(endp(f"/{mt}/types"))
         else:
-            ifk_key = "is_killer" if mt == CHARACTER else "is_for_killer"
             items = requests.get(
                 endp(f"/{mt}"),
-                params={ifk_key: ifk, "limit": 10_000},
+                params={"ifk": ifk, "limit": 10_000},
             )
 
         if items.status_code != 200:
