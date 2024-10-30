@@ -35,6 +35,7 @@ def get_fmt_correlation_dict(mt: "ModelType", ifk: "IsForKiller") -> dict[str, b
 
 
 def get_item_id_col(fmt: "FullModelType") -> str:
+    """Get item id column belonging to the full model type."""
     if fmt == KILLER_FMT.CHARACTER:
         return "power_id"
     elif fmt == KILLER_FMT.ADDONS:
@@ -64,10 +65,7 @@ def load_df_corr(
     df = df[df[item_id_col].notnull()].astype({item_id_col: int})
     assert not df.empty
 
-    df = df[df[item_id_col].isin(precond_ids)]
-    assert not df.empty
-
-    return df
+    return df[df[item_id_col].isin(precond_ids)]
 
 
 def merge_predictable_rarity(df: pd.DataFrame, mt: "ModelType") -> pd.DataFrame:
@@ -169,7 +167,12 @@ def correlated_options(
     item_id_col = get_item_id_col(fmt)
     precond_ids = precond_data[mask_precond].astype(int).unique()
 
+    # We take into account that there are some items without addons (for example)
+    # Useful for when ALL items are null
     df = load_df_corr(fmt, mt, item_id_col, precond_ids)
+    if df.empty:
+        return base_options_list(options, labeler)
+
     df = merge_predictable_rarity(df, mt)
     df = preprend_null(df, labeler, mt, ifk, item_id_col, uniqueness)
 
